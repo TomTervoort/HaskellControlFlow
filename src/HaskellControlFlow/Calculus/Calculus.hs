@@ -7,21 +7,26 @@ data Calculus = Term
 
 -- Terms.
 data Term = ConstantTerm {constant :: Constant}
+          | VariableTerm {varName :: Name}
           | ApplicationTerm {lhsTerm :: Term, rhsTerm :: Term}
           | AbstractionTerm {argName :: Name, bodyTerm :: Term}
-          | LetInTerm {letName :: Name, letTerm :: Term, inTerm :: Term}
+          | LetInTerm {letTerms :: [NamedTerm], inTerm :: Term}
           | IfTerm {exprTerm :: Term, thenTerm :: Term, elseTerm :: Term}
           
-          -- TODO: Operators. Named abstractions. Variables.
+          -- TODO: Operators.
           
             deriving (Show)
+
+-- Named term.
+data NamedTerm = NamedTerm {name :: Name, term :: Term}
+                 deriving (Show)
 
 -- Constants.
 data Constant = IntegerConst Integer
               | DoubleConst Rational
               | StringConst String
               | CharConst Char
-                 deriving (Show)
+                deriving (Show)
 
 -- Abstraction name.
 type Name = String
