@@ -3,7 +3,7 @@
 module HaskellControlFlow.Calculus.Calculus where
 
 -- Extended lambda calculus.
-data Calculus = Term
+type Calculus = Term
 
 -- Terms.
 data Term = ConstantTerm {constant :: Constant}

@@ -8,7 +8,7 @@ import Language.Haskell.Parser
 import Language.Haskell.Syntax
 
 -- Parses a haskell file.
-parseHaskellFile :: FilePath -> IO Term
+parseHaskellFile :: FilePath -> IO Calculus
 parseHaskellFile filename = do
     -- Read file contents.
     contents <- readFile filename
@@ -20,7 +20,7 @@ parseHaskellFile filename = do
             error $ filename ++ (':' : show line) ++ (':' : show column) ++ (':' : message)
 
 -- Parses a module.
-parseHaskellModule :: HsModule -> Term
+parseHaskellModule :: HsModule -> Calculus
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     LetInTerm {letTerms = concatMap parseDeclaration declarations
               ,inTerm   = VariableTerm {varName = "main"}}

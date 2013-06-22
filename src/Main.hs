@@ -3,12 +3,13 @@
 module Main(main) where
 
 import HaskellControlFlow.Parser.Parser
+import HaskellControlFlow.Calculus.Formatter
 
 import System.Environment (getArgs)
 
 -- Main method.
 main :: IO ()
-main =  do
+main = do
     -- Fetch filename from arguments.
     args <- getArgs
     
@@ -20,6 +21,6 @@ main =  do
     calculus <- parseHaskellFile filename
     
     -- Show it.
-    print calculus
+    putStr $ formatCalculus calculus
     
     return ()
