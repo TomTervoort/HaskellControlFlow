@@ -22,7 +22,7 @@ multipleLets (n:ns) t = LetInTerm n $ multipleLets ns t
 
 -- | Patterns within case-expressions.
 data Pattern = Variable Name
-             | Pattern {ctorName :: Name, ctorArgs :: [Pattern]}
+             | Pattern {ctorName :: Name, ctorArgs :: [Name]}
                 deriving (Show)
 
 -- | Named term.

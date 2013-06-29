@@ -125,6 +125,37 @@ algorithmW fac defs env term =
     do (ty1, s1, fac') <- algorithmW fac defs env t1
        (ty,  s2, fac') <- algorithmW fac' defs (M.map s1 $ M.insert x (gen (M.map s1 env) ty1) env) t2
        return (ty, s2 . s1, fac')
+  
+  CaseTerm t1 pats ->
+   do (ty1, s1, fac') <- algorithmW fac defs env t1
+      let handlePatterns [] = fail "Empty case statement."
+          handlePatterns ((Variable n,        term):_ ) = 
+           do (ty, s2, fac') <- algorithmW fac' defs (M.map s1 env) term
+              return (ty, s2 . s1, fac')
+
+          handlePatterns ((Pattern name args, term):ps) =
+           case lookUpConTypes name defs of
+            Nothing         -> fail $ "Unknown constructor: " ++ name
+            Just (cty, ats) -> do -- Unify expression type.
+                                  s2 <- unify ty1 cty
+                                  -- Introduce constructor argument types.
+                                  let s3 = foldr (.) id $ zipWith subTyVar args ats
+                                  -- Infer term.
+                                  let sx = s3 . s2 . s1
+                                  (ty2, s4, fac') <- algorithmW fac' defs (M.map sx env) term
+                                  (ty3, s5, fac') <- handlePatterns ps
+                                  -- Unify types of different terms.
+                                  s6 <- unify ty2 ty3
+                                  -- Done.
+                                  let sy = s6 . s5 . s4 . sx
+                                  return (sy ty2, sy, fac')
+
+      handlePatterns pats
+
+      
+     
+
+
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 

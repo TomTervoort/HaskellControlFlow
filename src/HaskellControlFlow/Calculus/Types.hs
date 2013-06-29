@@ -6,6 +6,7 @@ import HaskellControlFlow.Calculus.Calculus
 
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.List
 
 -- | A Haskell type. May also contain function type annotations or type variables.
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
@@ -60,9 +61,13 @@ initEnv = addDataDef boolDef $ DataEnv M.empty M.empty
 lookupDataDef :: Name -> DataEnv -> Maybe DataDef
 lookupDataDef n = M.lookup n . defs
 
--- | Look up the data type which contains a constructor with a particular name.
-lookUpConSource :: Name -> DataEnv -> Maybe Type
-lookUpConSource n = fmap DataType . M.lookup n . conNameMap
+-- | Look up the data type which contains a constructor with a particular name, as well as the 
+--   types of the constructor arguments.
+lookUpConTypes :: Name -> DataEnv -> Maybe (Type, [Type])
+lookUpConTypes n env = do dname <- M.lookup n $ conNameMap env
+                          def   <- M.lookup dname $ defs env
+                          con   <- find (\c -> conName c == n) $ ctors def
+                          return (DataType dname, members con)
 
 -- | Add a data definition to the environment.
 addDataDef :: DataDef -> DataEnv -> DataEnv
