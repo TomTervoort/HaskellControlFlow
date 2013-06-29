@@ -22,8 +22,8 @@ parseHaskellFile filename = do
 -- Parses a module.
 parseHaskellModule :: HsModule -> Calculus
 parseHaskellModule (HsModule _ _ _ _ declarations) =
-    LetInTerm {letTerms = concatMap parseDeclaration declarations
-              ,inTerm   = VariableTerm {varName = "main"}}
+    multipleLets (concatMap parseDeclaration declarations) 
+                 (VariableTerm {varName = "main"})
 
 -- Parses a declaration.
 parseDeclaration :: HsDecl -> [NamedTerm]
@@ -73,13 +73,15 @@ parseExpression expr = case expr of
     HsLambda _ patterns bodyExpr -> parseLambda patterns (HsUnGuardedRhs bodyExpr) []
     
     HsLet letDeclarations inExpr ->
-        LetInTerm {letTerms = concatMap parseDeclaration letDeclarations
-                   ,inTerm  = parseExpression inExpr}
+        multipleLets (concatMap parseDeclaration letDeclarations) 
+                     (parseExpression inExpr)
     
     HsIf firstExpr thenExpr elseExpr ->
-        IfTerm {exprTerm = parseExpression firstExpr
-               ,thenTerm = parseExpression thenExpr
-               ,elseTerm = parseExpression elseExpr}
+        CaseTerm {expr = parseExpression firstExpr,
+                  cases = [
+                           (Pattern "True" [],  parseExpression thenExpr),
+                           (Pattern "False" [], parseExpression elseExpr)
+                           ]}
     
     HsParen subExpr          -> parseExpression subExpr
     HsExpTypeSig _ subExpr _ -> parseExpression subExpr
@@ -135,8 +137,8 @@ parseLambda patterns rhs whereDeclarations =
             arguments = map parsePattern patterns
             bodyTerm  = case whereDeclarations of
                 [] -> parseRightHandSide rhs
-                _  -> LetInTerm {letTerms = concatMap parseDeclaration whereDeclarations
-                                ,inTerm   = parseRightHandSide rhs}
+                _  -> multipleLets (concatMap parseDeclaration whereDeclarations) 
+                                   (parseRightHandSide rhs)
 
 -- Parses a right hand side.
 parseRightHandSide :: HsRhs -> Term
