@@ -8,6 +8,11 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.List
 
+
+-- | Represents a program within our supported subset of Haskell. Consists of a top-level 
+--   expression (all functions are nested let expressions) and a collection of defined data types.
+data HaskellProgram = HaskellProgram {datatypes :: DataEnv, topExpr :: Calculus}
+
 -- | A Haskell type. May also contain function type annotations or type variables.
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
 --   subset of Haskell we support, they are considered as special cases.
@@ -32,10 +37,22 @@ type AnnVar = Name
 -- | A type environment: a mapping from variable names to their inferred types.
 type TyEnv = Map Name Type
 
--- | An environment of types of standard functions such as arithmetic operators.
+-- | An environment of types of some standard functions with which basic types can be manipulated.
 initTyEnv :: TyEnv
 initTyEnv = M.fromList stdOps
- where stdOps = [] -- TODO
+ where stdOps = [
+                   ("negate"       , Integer .> Integer)
+                 , ("+"            , Integer .> Integer)
+                 , ("-"            , Integer .> Integer)
+                 , ("*"            , Integer .> Integer)
+                 , ("div"          , Integer .> Integer)
+                 , ("ord"          , Char    .> Integer)
+                 , ("chr"          , Integer .> Char   )
+                 , ("round"        , Double  .> Integer)
+                 , ("fromIntegral" , Integer .> Double )
+                 , ("/"            , Double  .> Double )
+                ]
+       a .> b = Arrow Nothing (BasicType a) (BasicType b)
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 
 --   must be regular and can not be paramterized.

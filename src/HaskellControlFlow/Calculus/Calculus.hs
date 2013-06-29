@@ -11,7 +11,7 @@ data Term = ConstantTerm {constant :: Constant}
           | ApplicationTerm {lhsTerm :: Term, rhsTerm :: Term}
           | AbstractionTerm {argName :: Name, bodyTerm :: Term}
           | LetInTerm {letTerm :: NamedTerm, inTerm :: Term}
-          | CaseTerm {exprTerm :: Term, cases :: [(Pattern, Term)]}          
+          | CaseTerm {exprTerm :: Term, alts :: [(Pattern, Term)]}          
           | ListTerm {terms :: [Term]}
           | TupleTerm {terms :: [Term]}
             deriving (Show)
