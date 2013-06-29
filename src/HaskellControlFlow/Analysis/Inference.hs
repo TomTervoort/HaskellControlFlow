@@ -12,7 +12,7 @@ import qualified Data.Map as M
 import Control.Arrow
 import Control.Monad
 
--- | A type substitution.
+-- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
 
 -- | A type variable.
@@ -125,6 +125,29 @@ algorithmW fac defs env term =
     do (ty1, s1, fac') <- algorithmW fac defs env t1
        (ty,  s2, fac') <- algorithmW fac' defs (M.map s1 $ M.insert x (gen (M.map s1 env) ty1) env) t2
        return (ty, s2 . s1, fac')
+
+  ListTerm ts -> 
+   -- Unify the types of all members of the list literal.
+   let inferMember (ty, s1, fac') term =
+        do (ty', s2, fac') <- algorithmW fac' defs (M.map s1 env) term
+           s3 <- unify ty ty'
+           let sx = s3 . s2 . s1
+           return (sx ty, sx, fac')
+    in case ts of
+        []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
+        (t:ts) -> do first <- algorithmW fac defs env t
+                     (ty, s, fac') <- foldM inferMember first ts
+                     return (ListType ty, s, fac')
+
+  TupleTerm ts ->
+   -- Similar to inferring lists, but types of members do not have to match.
+   let inferMember (tys, s1, fac') term =
+        do (ty, s2, fac') <- algorithmW fac' defs (M.map s1 env) term
+           let sx = s2 . s1
+           return (sx ty : tys, sx, fac')
+    in do (tys, s, fac') <- foldM inferMember ([], id, fac) ts
+          return (TupleType tys, s, fac')
+
   
   CaseTerm t1 pats ->
    do (ty1, s1, fac') <- algorithmW fac defs env t1
