@@ -18,6 +18,7 @@
     {\csname lst@SaveFirstLabel\endcsname}
     \lstset{
       basicstyle=\small\ttfamily,
+      language=haskell,
       flexiblecolumns=false,
       basewidth={0.5em,0.45em},
       literate={+}{{$+$}}1 {/}{{$/$}}1 {*}{{$*$}}1 {=}{{$=$}}1
@@ -32,7 +33,7 @@
 
 \title{Control Flow Analysis of monomorphic Haskell}
 \author{Stijn van Drongelen {\tiny(3117537)},
-        Tom Tervoort {\tiny()},
+        Tom Tervoort {\tiny(3470784)},
         Gerben van Veenendaal {\tiny(3460692)}}
 \date{\today}
 
@@ -49,19 +50,65 @@ parse, this is already a huge scope limiting factor. We further narrow it
 down to mainly just functions and data types. In other words, we don't
 support:
 
-\begin{itemize}
-\item Type classes
-\item Literals
-\item Guards
-\item List comprehensions
-\item Monadic do-constructs
-\item FFI
-\item Imports (and exports)
-\item Recursive let-bindings
-\item Type signatures
-\end{itemize}
+\begin{description}
+\item[Recursive let-bindings]
+    TODO
+\item[Type signatures]
+    Although type signatures shouldn't be too hard to support, we choose
+    not to do this. The extra code required to connect a type signature to
+    the corresponding binding is not worth it, given that the other restrictions
+    on our subset make type inference decidable.
+\item[Guards]
+    Having to deal with guards makes the process of simplifying \texttt{case}
+    constructs very hard. We choose not to support them.
+\item[Type classes]
+    Type classes require a lot of extra work in the type inference algorithm.
+\item[Literals]
+    Numeric literals (and with certain extensions, \texttt{String} as well)
+    are polymorphic with a type class restriction. Since we don't support type
+    classes, we can't support literals.
+\item[Do-notation]
+    The \texttt{do}-notation desugars to the use of operators from the \texttt{Monad}
+    type class, and we can't support them.
+\item[List comprehensions]
+    List comprehensions can be seen as limited forms of the \texttt{do}-notation.
+    We could support them, but since not much more interesting than other
+    features of the language, we choose not to.
+\item [Modules (and imports)]
+    Most examples of control flow analysis fit in a single module. Although
+    analysis beyond module boundaries might be interesting, we simply don't
+    have the time to implement proper support for modules.
+\item [Foreign function interface]
+    Supporting the FFI is even harder than supporting imports. We simply don't
+    do this.
+\end{description}
 
 Furthermore, we initially choose to perform a monomorphic, monovariant analysis.
+
+\section{The language}
+We consider a desugared form of Haskell 2010.
+
+\begin{code}
+data Term = LiteralTerm     {constant :: Literal}
+          | VariableTerm    {varName :: Name}
+          | ApplicationTerm {lhsTerm :: Term, rhsTerm :: Term}
+          | AbstractionTerm {argName :: Name, bodyTerm :: Term}
+          | LetInTerm       {letTerm :: (Name, Term), inTerm :: Term}
+          | CaseTerm        {exprTerm :: Term, alts :: [(Pattern, Term)]}          
+          | ListTerm        {terms :: [Term]}
+          | TupleTerm       {terms :: [Term]}
+
+data Pattern = Variable Name
+             | Pattern {ctorName :: Name, ctorArgs :: [Name]}
+
+type Name = String
+\end{code}
+
+% TODO type inference over this language
+
+\section{The analysis}
+
+% TODO leveraging type inference to perform CFA
 
 \section{Implementation}
 \section{Results}
