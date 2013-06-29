@@ -12,6 +12,7 @@ data Term = ConstantTerm {constant :: Constant}
           | AbstractionTerm {argName :: Name, bodyTerm :: Term}
           | LetInTerm {letTerm :: NamedTerm, inTerm :: Term}
           | CaseTerm {expr :: Term, cases :: [(Pattern, Term)]}          
+          -- TODO: ListTerm, TupleTerm
             deriving (Show)
 
 -- | Smart constructor for multiple let-terms following each other in an expression.
