@@ -1,19 +1,77 @@
-\documentclass[a4paper]{article}
+\documentclass[a4paper]{scrartcl}
 
 \usepackage[english]{babel}
 \usepackage[a4paper]{geometry}
+\usepackage{fullpage}
 \usepackage{amsmath}
 \usepackage{graphicx}
 \usepackage{comment}
 \usepackage{hyperref}
 \usepackage{url}
+\usepackage{proof}
 
-\title{.., Automatic Program Analysis}
-\author{Stijn van Drongelen (), Tom Tervoort (), Gerben van Veenendaal (3460692)}
+\usepackage{listings}
+\lstloadlanguages{Haskell}
+\lstnewenvironment{code}
+    {\lstset{}%
+      \csname lst@SetFirstLabel\endcsname}
+    {\csname lst@SaveFirstLabel\endcsname}
+    \lstset{
+      basicstyle=\small\ttfamily,
+      flexiblecolumns=false,
+      basewidth={0.5em,0.45em},
+      literate={+}{{$+$}}1 {/}{{$/$}}1 {*}{{$*$}}1 {=}{{$=$}}1
+               {>}{{$>$}}1 {<}{{$<$}}1 {\\}{{$\lambda$}}1
+               {\\\\}{{\char`\\\char`\\}}1
+               {->}{{$\rightarrow$}}2 {>=}{{$\geq$}}2 {<-}{{$\leftarrow$}}2
+               {<=}{{$\leq$}}2 {=>}{{$\Rightarrow$}}2 
+               {\ .}{{$\circ$}}2 {\ .\ }{{$\circ$}}2
+               {>>}{{>>}}2 {>>=}{{>>=}}2
+               {|}{{$\mid$}}1               
+    }
+
+\title{Control Flow Analysis of monomorphic Haskell}
+\author{Stijn van Drongelen {\tiny(3117537)},
+        Tom Tervoort {\tiny()},
+        Gerben van Veenendaal {\tiny(3460692)}}
 \date{\today}
 
 \begin{document}
 
 \maketitle
+
+\section{Introduction}
+\section{Goal}
+% TODO
+
+To implement CFA on a subset of Haskell. Since we use \texttt{haskell-src} to
+parse, this is already a huge scope limiting factor. We further narrow it
+down to mainly just functions and data types. In other words, we don't
+support:
+
+\begin{itemize}
+\item Type classes
+\item Literals
+\item Guards
+\item List comprehensions
+\item Monadic do-constructs
+\item FFI
+\item Imports (and exports)
+\item Recursive let-bindings
+\item Type signatures
+\end{itemize}
+
+Furthermore, we initially choose to perform a monomorphic, monovariant analysis.
+
+\section{Implementation}
+\section{Results}
+\section{Discussion}
+\begin{itemize}
+\item
+    We treat lists and tuples as special types. A different approach might
+    have resulted in less redundant code.
+\end{itemize}
+
+\section{Conclusion}
 
 \end{document}
