@@ -38,10 +38,10 @@ minimum = listFold MoreThanThree meet
 
 removeFirst _ Nil = Nil
 removeFirst p (Cons v vs) = case p v of
-    True -> Cons v (removeFirst p vs)
-    False -> vs
+    True -> vs
+    False -> Cons v (removeFirst p vs)
 
 sort Nil = Nil
 sort xs
   = let m = minimum xs
-    in Cons m (badsort (removeFirst (not . equals m) xs))
+    in (Cons m . badsort . removeFirst (equals m)) xs
