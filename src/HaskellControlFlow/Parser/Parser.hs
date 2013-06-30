@@ -9,6 +9,7 @@ import Language.Haskell.Parser
 import Language.Haskell.Syntax
 
 import Data.Either
+import Data.Maybe
 
 -- | Parses a haskell file.
 parseHaskellFile :: FilePath -> IO HaskellProgram
@@ -42,11 +43,10 @@ parseDeclaration declaration = case declaration of
     HsPatBind _ pattern rhs whereDeclarations ->
         [Right $ NamedTerm {name = parseNamePattern pattern, term = parseLambda [] rhs whereDeclarations}]
     
-    HsFunBind [HsMatch _ name patterns rhs whereDeclarations] ->
-        [Right $ NamedTerm {name = parseName name, term = parseLambda patterns rhs whereDeclarations}]
-    
+    HsFunBind matches -> 
+     [Right $ uncurry NamedTerm (parseFunBindings matches)]
+
     -- Unsuported features.
-    HsFunBind _                 -> error "Pattern matching within functions not supported. Use case instead"
     HsNewTypeDecl _ _ _ _ _ _   -> error "New type notation not supported."
     HsClassDecl _ _ _ _ _       -> error "Class notation not supported."
     HsInfixDecl _ _ _ _         -> error "Infix notation not supported."
@@ -145,6 +145,33 @@ parseName fullName = case fullName of
     HsIdent name  -> name
     HsSymbol name -> name
 
+-- | Parses a set of bindings to the same function. Unless there is only a single match with a 
+--   variable, the resulting term will be a case expression.
+parseFunBindings :: [HsMatch] -> (Name, Term)
+parseFunBindings ms = 
+ case map parseFuncBinding ms of
+  []          -> error "Empty list passed to parseFunBindings."
+  [(n, Just (Variable v), t)] -> (n, AbstractionTerm v t)
+  [(n, Nothing, t)]           -> (n, t)
+  xs                          -> (getName xs, AbstractionTerm fresh 
+                                                $ CaseTerm (VariableTerm fresh) (map getAlt xs))
+ 
+ where fresh = "@" -- Not really a fresh variable. But since @ is an illegal Haskell identifier
+                   -- it can not shadow user code.
+       getName ((n, _, _):xs) | all (\(n',_,_) -> n == n') xs = n
+       getName _ = error "Inconsistant function names within same binding."
+       getAlt (_, Just p, rhs) = (p, rhs)
+       getAlt (_, Nothing, _)  = error "Different number of arguments in function bindings."
+
+-- | Parses a function binding. Unless it has no arguments (in which case the second result is 
+--   Nothing) the first argument will be parsed as a pattern (but may still be a variable) while 
+--   any others are required to be variables and are rewritten to abstractions within the Term.
+parseFuncBinding :: HsMatch -> (Name, Maybe Pattern, Term)
+parseFuncBinding (HsMatch _ name args rhs whereDecls) =
+ case args of
+  []     -> (parseName name, Nothing, parseLambda args rhs whereDecls)
+  (a:as) -> (parseName name, Just $ parsePattern a, parseLambda as rhs whereDecls)
+
 -- | Parses a lambda expression.
 parseLambda :: [HsPat] -> HsRhs -> [HsDecl] -> Term
 parseLambda patterns rhs whereDeclarations = 
@@ -182,16 +209,19 @@ parseOperator op = case op of
 
 -- | Parses a single case alternative.
 parseCaseAlternative :: HsAlt -> (Pattern, Term)
-parseCaseAlternative (HsAlt _ pat (HsUnGuardedAlt rhs) _) = (ppat pat, parseExpression rhs)
- where ppat pat = case pat of
-                   HsPVar var      -> Variable $ parseName var
-                   HsPApp con args -> Pattern (parseQName con) (map varpat args)
-                   HsPParen p      -> ppat p
-                   HsPLit _        -> error "Pattern matching on literals is not supported." -- TODO?
-                   _               -> error "Only simple pattern matching is supported."
-       varpat (HsPVar v) = parseName v
-       varpat _          = error "Nested patterns are not supported." -- TODO?: this could be rewritten as a nested case.
+parseCaseAlternative (HsAlt _ pat (HsUnGuardedAlt rhs) _) = (parsePattern pat, parseExpression rhs)
 parseCaseAlternative (HsAlt _ _ (HsGuardedAlts _) _) = error "Guards are not supported."  
+
+-- | Parses a pattern.
+parsePattern :: HsPat -> Pattern
+parsePattern pat = case pat of
+                    HsPVar var      -> Variable $ parseName var
+                    HsPApp con args -> Pattern (parseQName con) (map varpat args)
+                    HsPParen p      -> parsePattern p
+                    HsPLit _        -> error "Pattern matching on literals is not supported." -- TODO?
+                    _               -> error "Only simple pattern matching is supported."
+ where varpat (HsPVar v) = parseName v
+       varpat _          = error "Nested patterns are not supported."
 
 -- | Parses a constructor declaration within a datatype definition.
 parseDataCon :: HsConDecl -> DataCon
