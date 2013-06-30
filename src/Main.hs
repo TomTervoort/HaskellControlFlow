@@ -4,6 +4,7 @@ module Main(main) where
 
 import HaskellControlFlow.Parser.Parser
 import HaskellControlFlow.Calculus.Formatter
+import HaskellControlFlow.Calculus.Types (topExpr)
 
 import System.Environment (getArgs)
 
@@ -18,9 +19,9 @@ main = do
         else error "First argument must be a haskell filename."
     
     -- Parse it.
-    calculus <- parseHaskellFile filename
+    program <- parseHaskellFile filename
     
     -- Show it.
-    putStr $ formatCalculus calculus
+    putStr $ formatCalculus (topExpr program)
     
     return ()

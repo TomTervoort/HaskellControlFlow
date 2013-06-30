@@ -19,15 +19,12 @@ formatTerm term indentation = case term of
         '(' : formatTerm lhsTerm indentation ++ ' ' : (formatTerm rhsTerm indentation) ++ ")"
     AbstractionTerm {argName = argName, bodyTerm = bodyTerm} ->
         '\\' : argName ++ " -> " ++ formatTerm bodyTerm indentation
-    LetInTerm {letTerms = letTerms, inTerm = inTerm} ->
-        "\n" ++ indentation ++ "let" ++ (concatMap (\term -> formatNamedTerm term ('\t' : indentation)) letTerms) ++
+    LetInTerm {letTerm = letTerm, inTerm = inTerm} ->
+        "\n" ++ indentation ++ "let" ++ formatNamedTerm letTerm ('\t' : indentation) ++
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTerm inTerm ('\t' : indentation)
-    IfTerm {exprTerm = exprTerm, thenTerm = thenTerm, elseTerm = elseTerm} -> 
-        "\n" ++ indentation ++ "if\n\t" ++ indentation ++ formatTerm exprTerm ('\t' : indentation) ++
-        "\n" ++ indentation ++ "then" ++
-        "\n\t" ++ indentation ++ formatTerm thenTerm ('\t' : indentation) ++
-        "\n" ++ indentation ++ "else" ++
-        "\n\t" ++ indentation ++ formatTerm elseTerm ('\t' : indentation)
+    CaseTerm {exprTerm = exprTerm, alts = alts} ->
+        "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
+        ++ concatMap (\(patt, expr) -> formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
 
 -- Formats a named term.
 formatNamedTerm :: NamedTerm -> String -> String
@@ -41,4 +38,7 @@ formatConstant constant = case constant of
     DoubleConst rational -> show rational
     StringConst string   -> show string
     CharConst char       -> show char
-    
+
+formatPattern :: Pattern -> String
+formatPattern (Variable name) = name
+formatPattern (Pattern ctor args) = "(" ++ ctor ++ concatMap (" "++) args ++ ")"
