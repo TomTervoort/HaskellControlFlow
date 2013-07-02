@@ -100,112 +100,114 @@ unifyAnnVars _        _        constraints = constraints
 -- | Provides the type of a constant literal.
 constantType :: Constant -> Type
 constantType c = case c of
-                  IntegerConst _ -> BasicType Integer
-                  DoubleConst  _ -> BasicType Double
-                  CharConst    _ -> BasicType Char
-                  StringConst  _ -> ListType (BasicType Char)
+    IntegerConst _ -> BasicType Integer
+    DoubleConst  _ -> BasicType Double
+    CharConst    _ -> BasicType Char
+    StringConst  _ -> ListType (BasicType Char)
 
 -- | Implements algorithm W for type inference.
 algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term -> m (Type, TySubst, VarFactory, AnnConstraints)
-algorithmW fac defs env constraints term =
- case term of
-  ConstantTerm c -> 
-   return (constantType c, id, fac, constraints)
+algorithmW fac defs env constraints term = case term of
+    ConstantTerm c ->
+         return (constantType c, id, fac, constraints)
 
-  VariableTerm name -> 
-   case M.lookup name env of
-    Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
-    Just ty -> return (ty, id, fac, constraints)
+    VariableTerm name -> 
+        case M.lookup name env of
+            Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
+            Just ty -> return (ty, id, fac, constraints)
 
-  AbstractionTerm x t1  -> 
-   do let (a1, fac1) = first TyVar $ freshVar fac
-      let (a2, fac2) = freshVar fac1
-      
-      (ty2, s, fac2, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
-      
-      return (Arrow (Just a2) (s a1) ty2, s, fac2, constraints1)
+    AbstractionTerm x t1 -> do
+        let (a1, fac1) = first TyVar $ freshVar fac
+        let (a2, fac2) = freshVar fac1
+        
+        (ty2, s, fac2, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
+        
+        return (Arrow (Just a2) (s a1) ty2, s, fac2, constraints1)
 
-  ApplicationTerm t1 t2 -> 
-   do let (a1, fac1) = first TyVar $ freshVar fac
-      let (a2, fac2) = freshVar fac1
-      
-      (ty1, s1, fac3, constraints1) <- algorithmW fac1 defs env constraints t1
-      (ty2, s2, fac4, constraints2) <- algorithmW fac2 defs (M.map s1 env) constraints1 t2
-      
-      (s3, constraints3) <- unify (s2 ty1) (Arrow (Just a2) ty2 a1) constraints2
-      
-      return (s3 a1, s3 . s2 . s1, fac4, constraints3)
+    ApplicationTerm t1 t2 -> do
+        let (a1, fac1) = first TyVar $ freshVar fac
+        let (a2, fac2) = freshVar fac1
+        
+        (ty1, s1, fac3, constraints1) <- algorithmW fac1 defs env constraints t1
+        (ty2, s2, fac4, constraints2) <- algorithmW fac2 defs (M.map s1 env) constraints1 t2
+        
+        (s3, constraints3) <- unify (s2 ty1) (Arrow (Just a2) ty2 a1) constraints2
+        
+        return (s3 a1, s3 . s2 . s1, fac4, constraints3)
 
-  LetInTerm (NamedTerm name t1) t2 -> 
-    do (ty1, s1, fac1, constraints1) <- algorithmW fac defs env constraints t1
-       (ty2, s2, fac2, constraints2) <- algorithmW fac1 defs (M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env) constraints1 t2
-      
-       let constraints3 = case ty1 of
-            Arrow (Just a) _ _ -> (InclusionConstraint a name) : constraints2
-            _                  -> constraints2
-       
-       return (ty2, s2 . s1, fac2, constraints3)
+    LetInTerm (NamedTerm name t1) t2 -> do
+        (ty1, s1, fac1, constraints1) <- algorithmW fac defs env constraints t1
+        (ty2, s2, fac2, constraints2) <- algorithmW fac1 defs (M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env) constraints1 t2
+        
+        let constraints3 =
+                case ty1 of
+                    Arrow (Just a) _ _ -> (InclusionConstraint a name) : constraints2
+                    _                  -> constraints2
+        
+        return (ty2, s2 . s1, fac2, constraints3)
 
-  ListTerm ts -> 
-   -- Unify the types of all members of the list literal.
-   let inferMember (ty, s1, fac1, constraints) term =
-        do (ty1, s2, fac1, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
-           (s3, constraints2) <- unify ty ty1 constraints1
-           let sx = s3 . s2 . s1
-           return (sx ty, sx, fac1, constraints2)
-    in case ts of
-        []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
-        (t:ts) -> do first <- algorithmW fac defs env constraints t
-                     (ty, s, fac1, constraints1) <- foldM inferMember first ts
-                     return (ListType ty, s, fac1, constraints1)
+    ListTerm ts -> 
+     -- Unify the types of all members of the list literal.
+     let inferMember (ty, s1, fac1, constraints) term = do
+             (ty1, s2, fac1, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+             (s3, constraints2) <- unify ty ty1 constraints1
+             let sx = s3 . s2 . s1
+             return (sx ty, sx, fac1, constraints2)
+     in case ts of
+         []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
+         (t:ts) -> do
+             first <- algorithmW fac defs env constraints t
+             (ty, s, fac1, constraints1) <- foldM inferMember first ts
+             return (ListType ty, s, fac1, constraints1)
 
-  TupleTerm ts ->
-   -- Similar to inferring lists, but types of members do not have to match.
-   let inferMember (tys, s1, fac1, constraints) term =
-        do (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
-           let sx = s2 . s1
-           return (sx ty : tys, sx, fac2, constraints1)
-    in do (tys, s, fac1, constraints1) <- foldM inferMember ([], id, fac, constraints) ts
-          return (TupleType tys, s, fac1, constraints1)
+    TupleTerm ts ->
+        -- Similar to inferring lists, but types of members do not have to match.
+        let inferMember (tys, s1, fac1, constraints) term = do
+                (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+                let sx = s2 . s1
+                return (sx ty : tys, sx, fac2, constraints1)
+        in do
+            (tys, s, fac1, constraints1) <- foldM inferMember ([], id, fac, constraints) ts
+            return (TupleType tys, s, fac1, constraints1)
 
-  CaseTerm t1 pats ->
-   do first <- algorithmW fac defs env constraints t1
-   
-      handlePatterns first pats
-      
-      where
-          handlePatterns _ [] = fail "Empty case statement."
-          handlePatterns (ty1, s1, fac1, constraints) ((Variable name, term):_ ) = do
-              -- TODO: Put name in environment.
-              
-              (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
-              return (ty, s2 . s1, fac2, constraints1)
+    CaseTerm t1 pats -> do
+        first <- algorithmW fac defs env constraints t1
+        
+        handlePatterns first pats
+        
+        where
+            handlePatterns _ [] = fail "Empty case statement."
+            handlePatterns (ty1, s1, fac1, constraints) ((Variable name, term):_ ) = do
+                -- TODO: Put name in environment.
+                
+                (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+                return (ty, s2 . s1, fac2, constraints1)
 
-          handlePatterns (ty1, s1, fac1, constraints) ((Pattern name args, term):ps) =
-               case lookUpConTypes name defs of
-                   Nothing         -> fail $ "Unknown constructor: " ++ name
-                   Just (cty, ats) -> do
-                       -- Unify expression type.
-                       (s2, constraints1) <- unify ty1 cty constraints
-                       
-                       -- Introduce constructor argument types.
-                       let s3   = foldr (.) id $ zipWith subTyVar args ats
-                       let env1 = foldr (uncurry M.insert) env $ zip args ats
-                       
-                       -- Infer term.
-                       let sx = s3 . s2 . s1
-                       
-                       (ty2, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) constraints1 term
-                       (ty3, s5, fac3, constraints3) <- if null ps 
-                                                        then return (ty2, id, fac1, constraints2) 
-                                                        else handlePatterns (ty2, id, fac1, constraints2) ps
-                       
-                       -- Unify types of different terms.
-                       (s6, constraints4) <- unify ty2 ty3 constraints3
-                       
-                       -- Done.
-                       let sy = s6 . s5 . s4 . sx
-                       return (sy ty2, sy, fac3, constraints4)
+            handlePatterns (ty1, s1, fac1, constraints) ((Pattern name args, term):ps) =
+                 case lookUpConTypes name defs of
+                     Nothing         -> fail $ "Unknown constructor: " ++ name
+                     Just (cty, ats) -> do
+                         -- Unify expression type.
+                         (s2, constraints1) <- unify ty1 cty constraints
+                         
+                         -- Introduce constructor argument types.
+                         let s3   = foldr (.) id $ zipWith subTyVar args ats
+                         let env1 = foldr (uncurry M.insert) env $ zip args ats
+                         
+                         -- Infer term.
+                         let sx = s3 . s2 . s1
+                         
+                         (ty2, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) constraints1 term
+                         (ty3, s5, fac3, constraints3) <- if null ps 
+                                                          then return (ty2, id, fac1, constraints2) 
+                                                          else handlePatterns (ty2, id, fac1, constraints2) ps
+                         
+                         -- Unify types of different terms.
+                         (s6, constraints4) <- unify ty2 ty3 constraints3
+                         
+                         -- Done.
+                         let sy = s6 . s5 . s4 . sx
+                         return (sy ty2, sy, fac3, constraints4)
 
   FixTerm term ->
    do (fty, s, fac1, c1) <- algorithmW fac defs env constraints term
