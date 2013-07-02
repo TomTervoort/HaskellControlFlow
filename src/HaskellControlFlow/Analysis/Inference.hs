@@ -7,12 +7,9 @@ import HaskellControlFlow.Calculus.Types
 
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Map (Map)
 import qualified Data.Map as M
 import Control.Arrow
 import Control.Monad
-
-import Debug.Trace
 
 -- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
@@ -39,7 +36,7 @@ freeVars ty =
   TupleType ts  -> S.unions $ map freeVars ts
   Arrow _ t1 t2 -> freeVars t1 `S.union` freeVars t2
   TyVar v       -> S.singleton v
-  other         -> S.empty
+  _             -> S.empty
 
 -- | Provides the free type variables within a type environment.
 freeEnvVars :: TyEnv -> Set TyVar
@@ -107,7 +104,6 @@ constantType c = case c of
                   DoubleConst  _ -> BasicType Double
                   CharConst    _ -> BasicType Char
                   StringConst  _ -> ListType (BasicType Char)
-              
 
 -- | Implements algorithm W for type inference.
 algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term -> m (Type, TySubst, VarFactory, AnnConstraints)
@@ -179,8 +175,10 @@ algorithmW fac defs env constraints term =
       
       where
           handlePatterns _ [] = fail "Empty case statement."
-          handlePatterns (ty1, s1, fac1, constraints) ((Variable name, term):_ ) = 
-           do (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+          handlePatterns (ty1, s1, fac1, constraints) ((Variable name, term):_ ) = do
+              -- TODO: Put name in environment.
+              
+              (ty, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
               return (ty, s2 . s1, fac2, constraints1)
 
           handlePatterns (ty1, s1, fac1, constraints) ((Pattern name args, term):ps) =
