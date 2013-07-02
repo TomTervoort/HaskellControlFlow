@@ -1,0 +1,17 @@
+name:                HaskellControlFlow
+version:             0.1
+synopsis:            Control Flow Analysis of a tiny subset of Haskell
+license:             AllRightsReserved
+author:              Stijn van Drongelen, Tom Tervoort, Gerben van Veenendaal
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable haskellcf
+    main-is:            Main.hs
+    default-language:   Haskell2010     
+    build-depends:
+        base ==4.6.*,
+        containers ==0.5.*,
+        haskell-src ==1.0.*
+    hs-source-dirs:     src
+    ghc-options:        -Wall -auto-all

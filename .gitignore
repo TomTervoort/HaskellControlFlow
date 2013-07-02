@@ -1,0 +1,14 @@
+# Cabal stuff
+dist/
+*.hi
+*.o
+*.p_hi
+*.prof
+*.tix
+
+# LaTeX-related
+*.aux
+*.log
+*.out
+*.pdf
+
