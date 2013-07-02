@@ -29,7 +29,7 @@ initVarFactory = VarFactory 0
 
 -- | Generate a fresh variable name.
 freshVar :: VarFactory -> (Name, VarFactory)
-freshVar (VarFactory n) = ("_" ++ show n, VarFactory $ n + 1)
+freshVar (VarFactory n) = ('$' : show n, VarFactory $ n + 1)
 
 -- | Provides the free type variables within a type.
 freeVars :: Type -> Set TyVar
@@ -112,27 +112,32 @@ algorithmW fac defs env constraints term =
     Just ty -> return (ty, id, fac, constraints)
 
   AbstractionTerm x t1  -> 
-   do let (a1, fac')  = first TyVar $ freshVar fac
-      let (a2, fac'') = freshVar fac'
+   do let (a1, fac1) = first TyVar $ freshVar fac
+      let (a2, fac2) = freshVar fac1
       
-      (ty2, s, fac'', constraints') <- algorithmW fac'' defs (M.insert x a1 env) constraints t1
+      (ty2, s, fac2, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
       
-      return (Arrow (Just a2) (s a1) ty2, s, fac'', constraints')
+      return (Arrow (Just a2) (s a1) ty2, s, fac2, constraints1)
 
   ApplicationTerm t1 t2 -> 
-   do let (a, fac') = first TyVar $ freshVar fac
-      (ty1, s1, fac'', constraints')   <- algorithmW fac' defs env constraints t1
-      (ty2, s2, fac''', constraints'') <- algorithmW fac'' defs (M.map s1 env) constraints' t2
+   do let (a, fac1) = first TyVar $ freshVar fac
+      
+      (ty1, s1, fac2, constraints1) <- algorithmW fac1 defs env constraints t1
+      (ty2, s2, fac3, constraints2) <- algorithmW fac2 defs (M.map s1 env) constraints1 t2
       
       s3 <- unify (s2 ty1) (Arrow Nothing ty2 a)
       
-      return (s3 a, s3 . s2 . s1, fac''', constraints'')
+      return (s3 a, s3 . s2 . s1, fac3, constraints2)
 
-  LetInTerm (NamedTerm x t1) t2 -> 
-    do (ty1, s1, fac', constraints')   <- algorithmW fac defs env constraints t1
-       (ty,  s2, fac'', constraints'') <- algorithmW fac' defs (M.map s1 $ M.insert x (gen (M.map s1 env) ty1) env) constraints' t2
+  LetInTerm (NamedTerm name t1) t2 -> 
+    do (ty1, s1, fac1, constraints1) <- algorithmW fac defs env constraints t1
+       (ty2, s2, fac2, constraints2) <- algorithmW fac1 defs (M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env) constraints1 t2
+      
+       let constraints3 = case ty1 of
+            Arrow (Just a) _ _ -> (InclusionConstraint a name) : constraints2
+            _                  -> constraints2
        
-       return (ty, s2 . s1, fac'', constraints'')
+       return (ty2, s2 . s1, fac2, constraints3)
 
   ListTerm ts -> 
    -- Unify the types of all members of the list literal.
