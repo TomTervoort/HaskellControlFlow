@@ -162,41 +162,47 @@ algorithmW fac defs env constraints term =
           return (TupleType tys, s, fac', constraints')
 
   CaseTerm t1 pats ->
-   do (ty1, s1, fac', constraints') <- algorithmW fac defs env constraints t1
-      return (ty1, s1, fac', constraints')
-      let handlePatterns [] = fail "Empty case statement."
-          handlePatterns ((Variable n,        term):_ ) = 
-           do (ty, s2, fac', constraints'') <- algorithmW fac' defs (M.map s1 env) constraints' term
-              return (ty, s2 . s1, fac', constraints'')
+   do first <- algorithmW fac defs env constraints t1
+   
+      handlePatterns first pats
+      
+      where
+          handlePatterns _ [] = fail "Empty case statement."
+          handlePatterns (ty1, s1, fac1, constraints1) ((Variable name, term):_ ) = 
+           do (ty, s2, fac2, constraints2) <- algorithmW fac1 defs (M.map s1 env) constraints1 term
+              return (ty, s2 . s1, fac2, constraints2)
 
-          handlePatterns ((Pattern name args, term):ps) =
-           case lookUpConTypes name defs of
-            Nothing         -> fail $ "Unknown constructor: " ++ name
-            Just (cty, ats) -> do -- Unify expression type.
-                                  s2 <- unify ty1 cty
-                                  -- Introduce constructor argument types.
-                                  let s3 = foldr (.) id $ zipWith subTyVar args ats
-                                  let env' = foldr (uncurry M.insert) env $ zip args ats
-
-                                  -- Infer term.
-                                  let sx = s3 . s2 . s1
-                                  (ty2, s4, fac', constraints')  <- algorithmW fac' defs (M.map sx env') constraints term
-                                  (ty3, s5, fac', constraints'') <- if null ps 
-                                                                    then return (ty2, id, fac', constraints') 
-                                                                    else handlePatterns ps
-                                  -- Unify types of different terms.
-                                  s6 <- unify ty2 ty3
-                                  -- Done.
-                                  let sy = s6 . s5 . s4 . sx
-                                  return (sy ty2, sy, fac', constraints' ++ constraints'')
-
-      handlePatterns pats
+          handlePatterns (ty1, s1, fac1, constraints1) ((Pattern name args, term):ps) =
+               case lookUpConTypes name defs of
+                   Nothing         -> fail $ "Unknown constructor: " ++ name
+                   Just (cty, ats) -> do
+                       -- Unify expression type.
+                       s2 <- unify ty1 cty
+                       
+                       -- Introduce constructor argument types.
+                       let s3   = foldr (.) id $ zipWith subTyVar args ats
+                       let env1 = foldr (uncurry M.insert) env $ zip args ats
+                       
+                       -- Infer term.
+                       let sx = s3 . s2 . s1
+                       
+                       (ty2, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) [] term
+                       (ty3, s5, fac3, constraints3) <- if null ps 
+                                                        then return (ty2, id, fac1, constraints2) 
+                                                        else handlePatterns (ty2, id, fac1, constraints2) ps
+                       
+                       -- Unify types of different terms.
+                       s6 <- unify ty2 ty3
+                       
+                       -- Done.
+                       let sy = s6 . s5 . s4 . sx
+                       return (sy ty2, sy, fac3, constraints3)
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TyEnv)
+inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TyEnv, AnnConstraints)
 inferPrincipalType term datas env = 
   do (ty, s, _, constraints) <- algorithmW initVarFactory datas env [] term
      let newEnv = M.map s env
-     return (gen newEnv ty, newEnv)
+     return (gen newEnv ty, newEnv, constraints)

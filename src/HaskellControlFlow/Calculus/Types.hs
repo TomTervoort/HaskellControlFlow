@@ -54,6 +54,9 @@ type AnnVar = Name
 
 -- | Annotation constraint.
 data AnnConstraint = InclusionConstraint AnnVar Name
+                   | UnionConstraint AnnVar AnnVar
+                   | SubstituteConstraint AnnVar AnnVar
+                     deriving (Show)
 
 -- | Annotation constraints.
 type AnnConstraints = [AnnConstraint]

@@ -26,10 +26,12 @@ main = do
     putStr $ formatCalculus (topExpr program)
     
     let env = constructorTypes (datatypes program) initTyEnv
-    (programType, env) <- inferPrincipalType (topExpr program) (datatypes program) env
+    (programType, finalEnv, constraints) <- inferPrincipalType (topExpr program) (datatypes program) env
     
     putStrLn $ show programType
     
-    putStrLn $ show env
+    putStrLn $ show finalEnv
+    
+    putStrLn $ show constraints
     
     return ()

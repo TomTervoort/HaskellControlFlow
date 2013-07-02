@@ -24,6 +24,9 @@ main = let abc a = case a of
 
 -}
 
-main = baz 1 2
+app x = x 1
+
+main = app bar + app baz
     where
-        baz a b = a
+        bar x = x + 3
+        baz x = x * 3
