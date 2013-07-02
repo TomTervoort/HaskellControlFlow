@@ -209,8 +209,8 @@ algorithmW fac defs env constraints term = case term of
                          (tt, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) constraints1 pTerm
                          (ty3, s5, fac3, constraints3, typedAlts) <-
                              if null ps 
-                             then return (termType tt, id, fac1, constraints2, []) 
-                             else handlePatterns (termType tt, id, fac1, constraints2) ps
+                             then return (termType tt, id, fac2, constraints2, []) 
+                             else handlePatterns (termType tt, id, fac2, constraints2) ps
                          
                          -- Unify types of different terms.
                          (s6, constraints4) <- unify (termType tt) ty3 constraints3
