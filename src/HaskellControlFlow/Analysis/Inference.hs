@@ -247,33 +247,6 @@ lookupAnnNames var (allNames, substitutions) =
             Just substitution -> substitution
             Nothing           -> var
 
-
-{-
-
-
--- | Gets annotation variables.
-getAnnVariables :: AnnConstraints -> Set AnnVar
-getAnnVariables []     = empty
-getAnnVariables (x:xs) = case x of
-    InclusionConstraint var _         -> insert var $ getAnnVariables xs
-    SubstituteConstraint first second -> insert first $ insert second $ getAnnVariables xs
-
--- | Gets name set for a variable.
-getAnnNameSet :: AnnConstraints -> AnnVar -> (Map AnnVar (Set Name), Map 
-getAnnNameSet []     var = empty
-getAnnNameSet (x:xs) var = case x of
-    InclusionConstraint substVar name -> | var == substVar -> insert name $ getAnnNameSet xs var
-                                         | otherwise       -> getAnnNameSet xs var
-    SubstituteConstraint first second -> insert first $ insert second $ getAnnVariables xs
-
-
-
-
--}
-
-
-
-
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
