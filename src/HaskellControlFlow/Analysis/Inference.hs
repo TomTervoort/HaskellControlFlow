@@ -98,62 +98,68 @@ constantType c = case c of
               
 
 -- | Implements algorithm W for type inference.
-algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> Term -> m (Type, TySubst, VarFactory)
-algorithmW fac defs env term =
+algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term -> m (Type, TySubst, VarFactory, AnnConstraints)
+algorithmW fac defs env constraints term =
  case term of
-  ConstantTerm c        -> 
-   return (constantType c, id, fac)
+  ConstantTerm c -> 
+   return (constantType c, id, fac, constraints)
 
-  VariableTerm name     -> 
+  VariableTerm name -> 
    case M.lookup name env of 
     Nothing -> fail $ "Can not infer type of '" ++ name ++ "'."
-    Just ty -> return (ty, id, fac)
+    Just ty -> return (ty, id, fac, constraints)
 
   AbstractionTerm x t1  -> 
-   do let (a1, fac') = first TyVar $ freshVar fac
-      (ty2, s, fac') <- algorithmW fac' defs (M.insert x a1 env) t1
-      return (Arrow Nothing (s a1) ty2, s, fac')
+   do let (a1, fac')  = first TyVar $ freshVar fac
+      let (a2, fac'') = freshVar fac'
+      
+      (ty2, s, fac'', constraints') <- algorithmW fac'' defs (M.insert x a1 env) constraints t1
+      
+      return (Arrow (Just a2) (s a1) ty2, s, fac'', constraints')
 
   ApplicationTerm t1 t2 -> 
    do let (a, fac') = first TyVar $ freshVar fac
-      (ty1, s1, fac') <- algorithmW fac' defs env t1
-      (ty2, s2, fac') <- algorithmW fac' defs (M.map s1 env) t2
+      (ty1, s1, fac'', constraints')   <- algorithmW fac' defs env constraints t1
+      (ty2, s2, fac''', constraints'') <- algorithmW fac'' defs (M.map s1 env) constraints' t2
+      
       s3 <- unify (s2 ty1) (Arrow Nothing ty2 a)
-      return (s3 a, s3 . s2 . s1, fac')
+      
+      return (s3 a, s3 . s2 . s1, fac''', constraints'')
 
   LetInTerm (NamedTerm x t1) t2 -> 
-    do (ty1, s1, fac') <- algorithmW fac defs env t1
-       (ty,  s2, fac') <- algorithmW fac' defs (M.map s1 $ M.insert x (gen (M.map s1 env) ty1) env) t2
-       return (ty, s2 . s1, fac')
+    do (ty1, s1, fac', constraints')   <- algorithmW fac defs env constraints t1
+       (ty,  s2, fac'', constraints'') <- algorithmW fac' defs (M.map s1 $ M.insert x (gen (M.map s1 env) ty1) env) constraints' t2
+       
+       return (ty, s2 . s1, fac'', constraints'')
 
   ListTerm ts -> 
    -- Unify the types of all members of the list literal.
-   let inferMember (ty, s1, fac') term =
-        do (ty', s2, fac') <- algorithmW fac' defs (M.map s1 env) term
+   let inferMember (ty, s1, fac', constraints) term =
+        do (ty', s2, fac', constraints') <- algorithmW fac' defs (M.map s1 env) constraints term
            s3 <- unify ty ty'
            let sx = s3 . s2 . s1
-           return (sx ty, sx, fac')
+           return (sx ty, sx, fac', constraints')
     in case ts of
         []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
-        (t:ts) -> do first <- algorithmW fac defs env t
-                     (ty, s, fac') <- foldM inferMember first ts
-                     return (ListType ty, s, fac')
+        (t:ts) -> do first <- algorithmW fac defs env constraints t
+                     (ty, s, fac', constraints') <- foldM inferMember first ts
+                     return (ListType ty, s, fac', constraints')
 
   TupleTerm ts ->
    -- Similar to inferring lists, but types of members do not have to match.
-   let inferMember (tys, s1, fac') term =
-        do (ty, s2, fac') <- algorithmW fac' defs (M.map s1 env) term
+   let inferMember (tys, s1, fac', constraints) term =
+        do (ty, s2, fac', constraints') <- algorithmW fac' defs (M.map s1 env) constraints term
            let sx = s2 . s1
-           return (sx ty : tys, sx, fac')
-    in do (tys, s, fac') <- foldM inferMember ([], id, fac) ts
-          return (TupleType tys, s, fac')
+           return (sx ty : tys, sx, fac', constraints')
+    in do (tys, s, fac', constraints') <- foldM inferMember ([], id, fac, constraints) ts
+          return (TupleType tys, s, fac', constraints')
 
   CaseTerm t1 pats ->
-   do (ty1, s1, fac') <- algorithmW fac defs env t1
+   do (ty1, s1, fac', constraints') <- algorithmW fac defs env constraints t1
       let handlePatterns [] = fail "Empty case statement."
           handlePatterns ((Variable n,        term):_ ) = 
-           do (ty, s2, fac') <- algorithmW fac' defs (M.map s1 env) term
-              return (ty, s2 . s1, fac')
+           do (ty, s2, fac', constraints'') <- algorithmW fac' defs (M.map s1 env) constraints' term
+              return (ty, s2 . s1, fac', constraints'')
 
           handlePatterns ((Pattern name args, term):ps) =
            case lookUpConTypes name defs of
@@ -164,13 +170,13 @@ algorithmW fac defs env term =
                                   let s3 = foldr (.) id $ zipWith subTyVar args ats
                                   -- Infer term.
                                   let sx = s3 . s2 . s1
-                                  (ty2, s4, fac') <- algorithmW fac' defs (M.map sx env) term
-                                  (ty3, s5, fac') <- handlePatterns ps
+                                  (ty2, s4, fac', constraints') <- algorithmW fac' defs (M.map sx env) constraints term
+                                  (ty3, s5, fac', constraints'') <- handlePatterns ps
                                   -- Unify types of different terms.
                                   s6 <- unify ty2 ty3
                                   -- Done.
                                   let sy = s6 . s5 . s4 . sx
-                                  return (sy ty2, sy, fac')
+                                  return (sy ty2, sy, fac', constraints' ++ constraints'')
 
       handlePatterns pats
 
@@ -179,6 +185,6 @@ algorithmW fac defs env term =
 --   case of a type error. 
 inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TyEnv)
 inferPrincipalType term datas env = 
-  do (ty, s, _) <- algorithmW initVarFactory datas env term
+  do (ty, s, _, constraints) <- algorithmW initVarFactory datas env [] term
      let newEnv = M.map s env
      return (gen newEnv ty, newEnv)

@@ -34,6 +34,12 @@ data BasicType = Integer
 -- | Annotation variable.
 type AnnVar = Name
 
+-- | Annotation constraint.
+data AnnConstraint = InclusionConstraint AnnVar Name
+
+-- | Annotation constraints.
+type AnnConstraints = [AnnConstraint]
+
 -- | A type environment: a mapping from variable names to their inferred types.
 type TyEnv = Map Name Type
 
