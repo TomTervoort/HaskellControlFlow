@@ -59,18 +59,18 @@ type TyEnv = Map Name Type
 initTyEnv :: TyEnv
 initTyEnv = M.fromList stdOps
  where stdOps = [
-                   ("negate"       , Integer .> Integer)
-                 , ("+"            , Integer .> Integer)
-                 , ("-"            , Integer .> Integer)
-                 , ("*"            , Integer .> Integer)
-                 , ("div"          , Integer .> Integer)
-                 , ("ord"          , Char    .> Integer)
-                 , ("chr"          , Integer .> Char   )
-                 , ("round"        , Double  .> Integer)
-                 , ("fromIntegral" , Integer .> Double )
-                 , ("/"            , Double  .> Double )
+                   ("negate"       , BasicType Integer .> BasicType Integer)
+                 , ("+"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("-"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("*"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("div"          , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("ord"          , BasicType Char    .> BasicType Integer)
+                 , ("chr"          , BasicType Integer .> BasicType Char   )
+                 , ("round"        , BasicType Double  .> BasicType Integer)
+                 , ("fromIntegral" , BasicType Integer .> BasicType Double )
+                 , ("/"            , BasicType Double  .> BasicType Double  .> BasicType Double )
                 ]
-       a .> b = Arrow Nothing (BasicType a) (BasicType b)
+       a .> b = Arrow Nothing a b
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 
 --   must be regular and can not be paramterized.
