@@ -3,9 +3,10 @@
 module Foo where
 
 
-data A = B Integer | C
+data A = B Integer Integer | C | D
 
-main = let abc a = case a of
-                       B x -> 42 * x
-                       C -> 2
-        in abc C
+makeDouble = fromIntegral
+
+main = abc (B 1 2) where abc a = case a of
+                                  B x y -> makeDouble (42 * -x + y)
+                                  C -> 2.4
