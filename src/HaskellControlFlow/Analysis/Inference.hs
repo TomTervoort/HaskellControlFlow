@@ -70,25 +70,35 @@ subTyVar from to = sub
                  other          -> other
 
 -- | Robinson's unification algorithm. Uses Monad 'fail' in case of a type error.
-unify :: Monad m => Type -> Type -> m TySubst
-unify a b =
- case (a,b) of
-  (TyVar a, TyVar b) | a == b -> return id
-  (TyVar a1, t2)     | not $ a1 `S.member` freeVars t2 -> return $ subTyVar a1 t2
-  (t1, TyVar a2)     | not $ a2 `S.member` freeVars t1 -> return $ subTyVar a2 t1 
-  (BasicType x, BasicType y) | x == y -> return id
-  (DataType x, DataType y)   | x == y -> return id
-  (ListType t1, ListType t2)          -> unify t1 t2
-  (Arrow _ t11 t12, Arrow _ t21 t22)  -> do s1 <- unify t11 t21
-                                            s2 <- unify (s1 t12) (s1 t22)
-                                            return $ s2 . s1
-  
-  (TupleType ts1, TupleType ts2) | length ts1 == length ts2
-                                    -> do ss <- sequence $ zipWith unify ts1 ts2
-                                          return $ foldr (.) id ss
+unify :: Monad m => Type -> Type -> AnnConstraints -> m (TySubst, AnnConstraints)
+unify a b constraints = case (a, b) of
+    (TyVar a, TyVar b) | a == b -> return (id, constraints)
+    (TyVar a1, t2)     | not $ a1 `S.member` freeVars t2 -> return (subTyVar a1 t2, constraints)
+    (t1, TyVar a2)     | not $ a2 `S.member` freeVars t1 -> return (subTyVar a2 t1, constraints)
+    (BasicType x, BasicType y) | x == y -> return (id, constraints)
+    (DataType x, DataType y)   | x == y -> return (id, constraints)
+    (ListType t1, ListType t2)          -> unify t1 t2 constraints
+    (Arrow a1 t11 t12, Arrow a2 t21 t22) -> do
+        (s1, constraints1) <- unify t11 t21 constraints
+        (s2, constraints2) <- unify (s1 t12) (s1 t22) constraints1
+        
+        let constraints3 = unifyAnnVars a1 a2 constraints
+        
+        return (s2 . s1, constraints3)
+    
+    (TupleType ts1, TupleType ts2) | length ts1 == length ts2 -> do
+        foldM f (id, constraints) $ zip ts1 ts2
+              where
+                  f (s1, constraints) (a, b) = do
+                      (s2, constraints1) <- unify a b constraints
+                      return (s2 . s1, constraints1)
+    
+    _ -> fail $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
 
-  _ -> fail $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
-
+-- | Unifies annotation variables with constraints.
+unifyAnnVars :: Maybe AnnVar -> Maybe AnnVar -> AnnConstraints -> AnnConstraints
+unifyAnnVars (Just a) (Just b) constraints = (SubstituteConstraint a b) : constraints
+unifyAnnVars _        _        constraints = constraints
 
 -- | Provides the type of a constant literal.
 constantType :: Constant -> Type
@@ -125,9 +135,9 @@ algorithmW fac defs env constraints term =
       (ty1, s1, fac2, constraints1) <- algorithmW fac1 defs env constraints t1
       (ty2, s2, fac3, constraints2) <- algorithmW fac2 defs (M.map s1 env) constraints1 t2
       
-      s3 <- unify (s2 ty1) (Arrow Nothing ty2 a)
+      (s3, constraints3) <- unify (s2 ty1) (Arrow Nothing ty2 a) constraints2
       
-      return (s3 a, s3 . s2 . s1, fac3, constraints2)
+      return (s3 a, s3 . s2 . s1, fac3, constraints3)
 
   LetInTerm (NamedTerm name t1) t2 -> 
     do (ty1, s1, fac1, constraints1) <- algorithmW fac defs env constraints t1
@@ -141,11 +151,11 @@ algorithmW fac defs env constraints term =
 
   ListTerm ts -> 
    -- Unify the types of all members of the list literal.
-   let inferMember (ty, s1, fac', constraints) term =
-        do (ty', s2, fac', constraints') <- algorithmW fac' defs (M.map s1 env) constraints term
-           s3 <- unify ty ty'
+   let inferMember (ty, s1, fac1, constraints) term =
+        do (ty1, s2, fac1, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+           (s3, constraints2) <- unify ty ty1 constraints1
            let sx = s3 . s2 . s1
-           return (sx ty, sx, fac', constraints')
+           return (sx ty, sx, fac1, constraints2)
     in case ts of
         []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
         (t:ts) -> do first <- algorithmW fac defs env constraints t
@@ -177,7 +187,7 @@ algorithmW fac defs env constraints term =
                    Nothing         -> fail $ "Unknown constructor: " ++ name
                    Just (cty, ats) -> do
                        -- Unify expression type.
-                       s2 <- unify ty1 cty
+                       (s2, constraints2) <- unify ty1 cty constraints1
                        
                        -- Introduce constructor argument types.
                        let s3   = foldr (.) id $ zipWith subTyVar args ats
@@ -186,17 +196,17 @@ algorithmW fac defs env constraints term =
                        -- Infer term.
                        let sx = s3 . s2 . s1
                        
-                       (ty2, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) [] term
-                       (ty3, s5, fac3, constraints3) <- if null ps 
-                                                        then return (ty2, id, fac1, constraints2) 
-                                                        else handlePatterns (ty2, id, fac1, constraints2) ps
+                       (ty2, s4, fac2, constraints3) <- algorithmW fac1 defs (M.map sx env1) constraints2 term
+                       (ty3, s5, fac3, constraints4) <- if null ps 
+                                                        then return (ty2, id, fac1, constraints3) 
+                                                        else handlePatterns (ty2, id, fac1, constraints3) ps
                        
                        -- Unify types of different terms.
-                       s6 <- unify ty2 ty3
+                       (s6, constraints5) <- unify ty2 ty3 constraints4
                        
                        -- Done.
                        let sy = s6 . s5 . s4 . sx
-                       return (sy ty2, sy, fac3, constraints3)
+                       return (sy ty2, sy, fac3, constraints5)
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
