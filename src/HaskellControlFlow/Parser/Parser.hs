@@ -109,15 +109,15 @@ parseExpression expr = case expr of
     HsRightSection _ _     -> error "Right section not supported."
     HsRecConstr _ _	       -> error "Record notation not supported."
     HsRecUpdate _ _        -> error "Record notation not supported."
-    HsEnumFrom _	       -> error "Enum notation not supported."
+    HsEnumFrom _	         -> error "Enum notation not supported."
     HsEnumFromTo _ _       -> error "Enum notation not supported."	
     HsEnumFromThen _ _	   -> error "Enum notation not supported."
     HsEnumFromThenTo _ _ _ -> error "Enum notation not supported."
     HsListComp _ _	       -> error "List comprehensions not supported."
     
-    HsAsPat _ _ -> error "Pattern matching supported within case alternatives."
-    HsWildCard  -> error "Pattern matching supported within case alternatives."
-    HsIrrPat _  -> error "Pattern matching supported within case alternatives."
+    HsAsPat _ _ -> error "Pattern matching only supported on the first argument or within case alternatives."
+    HsWildCard  -> error "Pattern matching only supported on the first argument or within case alternatives."
+    HsIrrPat _  -> error "Pattern matching only supported on the first argument or within case alternatives."
 
 -- | Parses a literal (constant) value.
 parseLiteral :: HsLiteral -> Term
@@ -197,9 +197,10 @@ parseRightHandSide rhs = case rhs of
 parseNamePattern :: HsPat -> Name
 parseNamePattern pattern = case pattern of
     HsPVar name -> parseName name
-    
+    HsPWildCard -> error "Wildcards are not supported."
+
     -- Unsuported features.
-    _ -> error "Pattern matching is only supported in case alternatives."
+    _ -> error "Pattern matching is only supported on the first argument or within case alternatives."
 
 -- | Parses an operator. 
 parseOperator :: HsQOp -> Term

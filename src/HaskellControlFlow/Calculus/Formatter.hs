@@ -4,6 +4,8 @@ module HaskellControlFlow.Calculus.Formatter (formatCalculus) where
 
 import HaskellControlFlow.Calculus.Calculus
 
+import Data.List
+
 -- Formats a calculus.
 formatCalculus :: Calculus -> String
 formatCalculus term = (formatTerm term "") ++ "\n"
@@ -25,6 +27,9 @@ formatTerm term indentation = case term of
     CaseTerm {exprTerm = exprTerm, alts = alts} ->
         "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
         ++ concatMap (\(patt, expr) -> formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
+    ListTerm terms -> concat $ ["["] ++ intersperse ", " (map fmt terms) ++ ["]"]
+    TupleTerm terms -> concat $ ["("] ++ intersperse ", " (map fmt terms) ++ [")"]
+ where fmt t = formatTerm t indentation
 
 -- Formats a named term.
 formatNamedTerm :: NamedTerm -> String -> String

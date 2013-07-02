@@ -36,10 +36,11 @@ minimum = listFold MoreThanThree meet
 
 (.) f g x = f (g x)
 
-removeFirst _ Nil = Nil
-removeFirst p (Cons v vs) = case p v of
-    True -> vs
-    False -> Cons v (removeFirst p vs)
+removeFirst p xs = case xs of
+                    Nil -> Nil
+                    Cons v vs -> case p v of
+                                  True -> vs
+                                  False -> Cons v (removeFirst p vs)
 
 sort Nil = Nil
 sort xs
