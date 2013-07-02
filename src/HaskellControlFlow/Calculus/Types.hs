@@ -71,6 +71,7 @@ initTyEnv = M.fromList stdOps
                  , ("/"            , BasicType Double  .> BasicType Double  .> BasicType Double )
                 ]
        a .> b = Arrow Nothing a b
+       infixr 3 .>
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 
 --   must be regular and can not be paramterized.
