@@ -2,6 +2,7 @@
 
 module HaskellControlFlow.Calculus.Formatter (formatCalculus) where
 
+import Data.List (intercalate)
 import HaskellControlFlow.Calculus.Calculus
 
 import Data.List
@@ -26,10 +27,9 @@ formatTerm term indentation = case term of
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTerm inTerm ('\t' : indentation)
     CaseTerm {exprTerm = exprTerm, alts = alts} ->
         "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
-        ++ concatMap (\(patt, expr) -> formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
-    ListTerm terms -> concat $ ["["] ++ intersperse ", " (map fmt terms) ++ ["]"]
-    TupleTerm terms -> concat $ ["("] ++ intersperse ", " (map fmt terms) ++ [")"]
- where fmt t = formatTerm t indentation
+        ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
+    ListTerm {terms = terms} -> "[" ++ intercalate ", " (map (flip formatTerm "") terms) ++ "]"
+    TupleTerm {terms = terms} -> "(" ++ intercalate ", " (map (flip formatTerm "") terms) ++ ")"
 
 -- Formats a named term.
 formatNamedTerm :: NamedTerm -> String -> String
@@ -46,4 +46,4 @@ formatConstant constant = case constant of
 
 formatPattern :: Pattern -> String
 formatPattern (Variable name) = name
-formatPattern (Pattern ctor args) = "(" ++ ctor ++ concatMap (" "++) args ++ ")"
+formatPattern (Pattern ctor args) = "(" ++ ctor ++ concatMap (' ':) args ++ ")"
