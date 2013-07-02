@@ -209,11 +209,76 @@ algorithmW fac defs env constraints term =
                        let sy = s6 . s5 . s4 . sx
                        return (sy ty2, sy, fac3, constraints4)
 
+-- | Constraint solver.
+solveAnnConstraints :: AnnConstraints -> AnnEnv
+solveAnnConstraints []     = (M.empty, M.empty)
+solveAnnConstraints (x:xs) = case x of
+    InclusionConstraint var name ->
+        let (allNames, substitutions) = solveAnnConstraints xs
+        in case M.lookup var substitutions of
+            Just subsitute -> insertName subsitute name allNames substitutions
+            Nothing        -> insertName var       name allNames substitutions
+        where
+            insertName var name allNames substitutions = case M.lookup var allNames of
+                Just varNames -> (M.insert var (S.insert name varNames) allNames, substitutions)
+                Nothing       -> (M.insert var (S.insert name S.empty)  allNames, substitutions)
+    
+    SubstituteConstraint first second ->
+        let (allNames, substitutions) = solveAnnConstraints xs
+        in case M.lookup (cannonicalVarName first substitutions) allNames of
+            Just _  -> (allNames, insertSubsitution second first substitutions)
+            Nothing -> (allNames, insertSubsitution first second substitutions)
+        where
+            insertSubsitution first second substitutions =
+                M.insert first (cannonicalVarName second substitutions) substitutions
+            
+            cannonicalVarName var substitutions = case M.lookup var substitutions of
+                Just substitution -> substitution
+                Nothing           -> var
+
+-- | Looks up annotation names in the solved annotations.
+lookupAnnNames :: AnnVar -> AnnEnv -> [Name]
+lookupAnnNames var (allNames, substitutions) =
+    case M.lookup (cannonicalVarName var substitutions) allNames of
+        Just namesSet -> S.toList namesSet
+        Nothing       -> []
+    where
+        cannonicalVarName var substitutions = case M.lookup var substitutions of
+            Just substitution -> substitution
+            Nothing           -> var
+
+
+{-
+
+
+-- | Gets annotation variables.
+getAnnVariables :: AnnConstraints -> Set AnnVar
+getAnnVariables []     = empty
+getAnnVariables (x:xs) = case x of
+    InclusionConstraint var _         -> insert var $ getAnnVariables xs
+    SubstituteConstraint first second -> insert first $ insert second $ getAnnVariables xs
+
+-- | Gets name set for a variable.
+getAnnNameSet :: AnnConstraints -> AnnVar -> (Map AnnVar (Set Name), Map 
+getAnnNameSet []     var = empty
+getAnnNameSet (x:xs) var = case x of
+    InclusionConstraint substVar name -> | var == substVar -> insert name $ getAnnNameSet xs var
+                                         | otherwise       -> getAnnNameSet xs var
+    SubstituteConstraint first second -> insert first $ insert second $ getAnnVariables xs
+
+
+
+
+-}
+
+
+
+
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TyEnv, AnnConstraints)
+inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TyEnv, AnnEnv)
 inferPrincipalType term datas env = 
   do (ty, s, _, constraints) <- algorithmW initVarFactory datas env [] term
      let newEnv = M.map s env
-     return (gen newEnv ty, newEnv, constraints)
+     return (gen newEnv ty, newEnv, solveAnnConstraints constraints)

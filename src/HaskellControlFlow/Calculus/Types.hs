@@ -6,6 +6,7 @@ import HaskellControlFlow.Calculus.Calculus
 
 import Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.List
 
 
@@ -54,9 +55,11 @@ type AnnVar = Name
 
 -- | Annotation constraint.
 data AnnConstraint = InclusionConstraint AnnVar Name
-                   | UnionConstraint AnnVar AnnVar
                    | SubstituteConstraint AnnVar AnnVar
                      deriving (Show)
+
+-- | Annotation environment.
+type AnnEnv = (M.Map AnnVar (S.Set Name), M.Map AnnVar AnnVar)
 
 -- | Annotation constraints.
 type AnnConstraints = [AnnConstraint]
