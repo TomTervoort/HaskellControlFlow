@@ -55,6 +55,14 @@ type AnnVar = Name
 -- | A type environment: a mapping from variable names to their inferred types.
 type TyEnv = Map Name Type
 
+-- | Gives the type with a certain name. Either returns a basic type if the String equals "Integer",
+--   "Char" or "Double"; or considers the type to be a custom data type.
+typeFromName :: String -> Type
+typeFromName "Integer" = BasicType Integer
+typeFromName "Char" = BasicType Char
+typeFromName "Double" = BasicType Double
+typeFromName datatype = DataType datatype
+
 -- | An environment of types of some standard functions with which basic types can be manipulated.
 initTyEnv :: TyEnv
 initTyEnv = M.fromList stdOps
