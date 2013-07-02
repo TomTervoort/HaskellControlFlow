@@ -107,8 +107,8 @@ algorithmW fac defs env constraints term =
    return (constantType c, id, fac, constraints)
 
   VariableTerm name -> 
-   case M.lookup name env of 
-    Nothing -> fail $ "Can not infer type of '" ++ name ++ "'."
+   case M.lookup name env of
+    Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
     Just ty -> return (ty, id, fac, constraints)
 
   AbstractionTerm x t1  -> 
@@ -171,9 +171,11 @@ algorithmW fac defs env constraints term =
                                   s2 <- unify ty1 cty
                                   -- Introduce constructor argument types.
                                   let s3 = foldr (.) id $ zipWith subTyVar args ats
+                                  let env' = foldr (uncurry M.insert) env $ zip args ats
+
                                   -- Infer term.
                                   let sx = s3 . s2 . s1
-                                  (ty2, s4, fac', constraints')  <- algorithmW fac' defs (M.map sx env) constraints term
+                                  (ty2, s4, fac', constraints')  <- algorithmW fac' defs (M.map sx env') constraints term
                                   (ty3, s5, fac', constraints'') <- if null ps 
                                                                     then return (ty2, id, fac', constraints') 
                                                                     else handlePatterns ps
