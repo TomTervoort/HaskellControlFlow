@@ -14,6 +14,7 @@ data Term = ConstantTerm {constant :: Constant}
           | CaseTerm {exprTerm :: Term, alts :: [(Pattern, Term)]}          
           | ListTerm {terms :: [Term]}
           | TupleTerm {terms :: [Term]}
+          | FixTerm {fixedTerm :: Term}
             deriving (Show)
 
 -- | Smart constructor for multiple let-terms following each other in an expression.

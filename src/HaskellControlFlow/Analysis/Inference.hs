@@ -207,6 +207,15 @@ algorithmW fac defs env constraints term =
                        let sy = s6 . s5 . s4 . sx
                        return (sy ty2, sy, fac3, constraints4)
 
+  FixTerm term ->
+   do (fty, s, fac1, c1) <- algorithmW fac defs env constraints term
+
+      -- The fixed term should be of type a -> a for some a. After applying the fix operator, the 
+      -- resulting type will be a.
+      let (ty, fac2) = first TyVar $ freshVar fac1
+      (s1, c2) <- unify fty (Arrow Nothing ty ty) c1
+      return (s1 ty, s1 . s, fac2, c2)
+
 -- | Constraint solver.
 solveAnnConstraints :: AnnConstraints -> AnnEnv
 solveAnnConstraints []     = (M.empty, M.empty)
