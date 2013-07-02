@@ -150,6 +150,7 @@ algorithmW fac defs env term =
 
   CaseTerm t1 pats ->
    do (ty1, s1, fac') <- algorithmW fac defs env t1
+      return (ty1, s1, fac')
       let handlePatterns [] = fail "Empty case statement."
           handlePatterns ((Variable n,        term):_ ) = 
            do (ty, s2, fac') <- algorithmW fac' defs (M.map s1 env) term
@@ -165,7 +166,9 @@ algorithmW fac defs env term =
                                   -- Infer term.
                                   let sx = s3 . s2 . s1
                                   (ty2, s4, fac') <- algorithmW fac' defs (M.map sx env) term
-                                  (ty3, s5, fac') <- handlePatterns ps
+                                  (ty3, s5, fac') <- if null ps 
+                                                      then return (ty2, id, fac') 
+                                                      else handlePatterns ps
                                   -- Unify types of different terms.
                                   s6 <- unify ty2 ty3
                                   -- Done.

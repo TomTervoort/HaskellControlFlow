@@ -7,7 +7,7 @@ import HaskellControlFlow.Calculus.Formatter
 import HaskellControlFlow.Calculus.Types
 import HaskellControlFlow.Analysis.Inference
 
-import System.Environment (getArgs)
+import System.Environment
 
 -- Main method.
 main :: IO ()
@@ -25,8 +25,8 @@ main = do
     -- Show it.
     putStr $ formatCalculus (topExpr program)
     
-    
-    (programType, env) <- inferPrincipalType (topExpr program) (datatypes program) initTyEnv
+    let env = constructorTypes (datatypes program) initTyEnv
+    (programType, env) <- inferPrincipalType (topExpr program) (datatypes program) env
     
     putStrLn $ show programType
     
