@@ -2,6 +2,7 @@
 
 module HaskellControlFlow.Calculus.Formatter (formatCalculus) where
 
+import Data.List (intercalate)
 import HaskellControlFlow.Calculus.Calculus
 
 -- Formats a calculus.
@@ -25,6 +26,8 @@ formatTerm term indentation = case term of
     CaseTerm {exprTerm = exprTerm, alts = alts} ->
         "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
         ++ concatMap (\(patt, expr) -> formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
+    ListTerm {terms = terms} -> "[" ++ intercalate ", " (map (flip formatTerm "") terms) ++ "]"
+    TupleTerm {terms = terms} -> "(" ++ intercalate ", " (map (flip formatTerm "") terms) ++ ")"
 
 -- Formats a named term.
 formatNamedTerm :: NamedTerm -> String -> String
