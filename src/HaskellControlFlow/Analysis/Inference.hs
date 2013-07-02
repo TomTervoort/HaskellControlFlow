@@ -225,8 +225,8 @@ algorithmW fac defs env constraints term = case term of
         -- The fixed term should be of type a -> a for some a. After applying the fix operator, the 
         -- resulting type will be a.
         let (ty, fac2) = first TyVar $ freshVar fac1
-        (s1, c2) <- unify fty (Arrow Nothing ty ty) c1
-        return (s1 ty, s1 . s, fac2, c2)
+        (s1, c2) <- unify (termType fty) (Arrow Nothing ty ty) c1
+        return (TypedFixTerm (s1 ty) fty, s1 . s, fac2, c2)
 
 -- | Constraint solver.
 solveAnnConstraints :: AnnConstraints -> AnnEnv

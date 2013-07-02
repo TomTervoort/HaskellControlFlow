@@ -138,9 +138,6 @@ namedTermsToLets = foldr (\n -> (LetInTerm n .)) id
 --   recursion.
 letGroup :: [NamedTerm] -> Term -> Term
 letGroup lhss = namedTermsToLets $ fixRecursion $ makeCallGraph lhss
-
-
-
 {-- letGroup [NamedTerm n def] t = LetInTerm (NamedTerm n def) t
 letGroup (n:ns) t = LetInTerm n $ letGroup ns t
 letGroup [] _ = error "Provide at least one named term."  --}

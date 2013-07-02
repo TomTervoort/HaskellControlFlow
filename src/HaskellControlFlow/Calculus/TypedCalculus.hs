@@ -17,6 +17,7 @@ data TypedTerm = TypedConstantTerm {termType :: Type, constant :: C.Constant}
                | TypedCaseTerm {termType :: Type, exprTerm :: TypedTerm, alts :: [(C.Pattern, TypedTerm)]}          
                | TypedListTerm {termType :: Type, terms :: [TypedTerm]}
                | TypedTupleTerm {termType :: Type, terms :: [TypedTerm]}
+               | TypedFixTerm {termType :: Type, fixedTerm :: TypedTerm}
                  deriving (Show)
 
 -- | Named typed term.
@@ -66,3 +67,4 @@ typedTupleTerm termType _ terms =
 -- | Helper method for named typed terms.
 namedTypedTerm :: C.Name -> TypedTerm -> NamedTypedTerm
 namedTypedTerm = NamedTypedTerm
+
