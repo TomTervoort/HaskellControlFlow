@@ -2,16 +2,22 @@
 
 module Foo where
 
-
+{-
 bar = let a = 3
           b = 5
-      in multiply a b
+      in a * b
 
-main = add abc 14
+baz = \x y -> x + y
+
+main = baz bar abc
     where
         abc = 3
 
-baz = \x y -> add x y
-
 not x = if x then False else True
+-}
+
+data A = B | C
+
+main = let abc a b = 1
+       in abc 1 3
 

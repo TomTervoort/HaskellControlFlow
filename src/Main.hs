@@ -4,7 +4,8 @@ module Main(main) where
 
 import HaskellControlFlow.Parser.Parser
 import HaskellControlFlow.Calculus.Formatter
-import HaskellControlFlow.Calculus.Types (topExpr)
+import HaskellControlFlow.Calculus.Types
+import HaskellControlFlow.Analysis.Inference
 
 import System.Environment (getArgs)
 
@@ -23,5 +24,12 @@ main = do
     
     -- Show it.
     putStr $ formatCalculus (topExpr program)
+    
+    
+    (programType, env) <- inferPrincipalType (topExpr program) (datatypes program) initTyEnv
+    
+    putStrLn $ show programType
+    
+    putStrLn $ show env
     
     return ()

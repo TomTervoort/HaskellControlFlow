@@ -148,7 +148,6 @@ algorithmW fac defs env term =
     in do (tys, s, fac') <- foldM inferMember ([], id, fac) ts
           return (TupleType tys, s, fac')
 
-  
   CaseTerm t1 pats ->
    do (ty1, s1, fac') <- algorithmW fac defs env t1
       let handlePatterns [] = fail "Empty case statement."
@@ -174,11 +173,6 @@ algorithmW fac defs env term =
                                   return (sy ty2, sy, fac')
 
       handlePatterns pats
-
-      
-     
-
-
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
