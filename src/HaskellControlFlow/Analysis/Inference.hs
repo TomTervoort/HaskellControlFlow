@@ -11,6 +11,8 @@ import qualified Data.Map as M
 import Control.Arrow
 import Control.Monad
 
+import Debug.Trace
+
 -- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
 

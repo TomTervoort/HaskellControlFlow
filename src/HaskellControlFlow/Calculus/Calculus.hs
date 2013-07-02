@@ -6,6 +6,8 @@ import Data.Graph
 import Data.List
 import Data.Maybe
 
+import Debug.Trace
+
 -- | Graph of mutual calls within a group of let's. The outgoing edge list may contain names that 
 --   are not present in the graph. These should be ignored.
 type CallGraph = [(Term, Name, [Name])]
@@ -71,6 +73,7 @@ makeCallGraph :: [NamedTerm] -> CallGraph
 makeCallGraph = map (\(NamedTerm n t) -> (t, n, names t))
  where names t = 
         case t of
+         ConstantTerm _ -> []
          VariableTerm n -> [n]
          ApplicationTerm l r -> names l ++ names r
          AbstractionTerm n b -> removeAll n $ names b -- Do not include the scoped variable.
@@ -80,7 +83,9 @@ makeCallGraph = map (\(NamedTerm n t) -> (t, n, names t))
          TupleTerm ts -> concatMap names ts
          FixTerm f -> names f
        
-       removeAll x ys = ys \\ repeat x
+       removeAll _ [] = []
+       removeAll x (y:ys) | x == y    = removeAll x ys
+                          | otherwise = y : removeAll x ys
        altNames (Variable n  , t) = removeAll n $ names t
        altNames (Pattern _ as, t) = foldr (\a -> (removeAll a .)) id as $ names t
 
@@ -97,7 +102,7 @@ fixRecursion = concatMap handleSCC . stronglyConnCompR
 
        handleNode :: [Name] -> (Term, Name, [Name]) -> (NamedTerm, NamedTerm)
        handleNode group (t, name, _) = (NamedTerm (absName name) $ abstracted group, 
-                                        NamedTerm name           $ fixed nameIndex)
+                                        NamedTerm name           $ fixed 0 nameIndex)
         where nameIndex = fromJust $ findIndex (== name) group
               
               abstracted :: [Name] -> Term
@@ -110,13 +115,15 @@ fixRecursion = concatMap handleSCC . stronglyConnCompR
               fixName i = "@F" ++ show i ++ "@" ++ name
               groupSize = length group
 
-              fixed :: Int -> Term
-              fixed i = FixTerm $ AbstractionTerm (fixName i) 
-                                $ appSequence 
-                                $ [VariableTerm $ absName $ group !! i] 
-                                    ++ map VariableTerm (take (i - 1) group)
-                                    ++ [VariableTerm $ fixName i]
-                                    ++ map fixed [i .. groupSize - 1]
+              fixed :: Int -> Int -> Term
+              fixed defCount i = FixTerm $ AbstractionTerm (fixName i) 
+                                         $ appSequence 
+                                         $ [VariableTerm $ absName $ group !! i] 
+                                             ++ map VariableTerm (take defCount group)
+                                             ++ map (fixed defCount) [defCount .. i - 1]
+                                             ++ [VariableTerm $ fixName i]
+                                             ++ map (repName i . fixed (defCount + 1)) [i + 1 .. groupSize - 1]
+              repName i = replaceVar (group !! i) (VariableTerm $ fixName i)
 
               appSequence :: [Term] -> Term
               appSequence = foldl1 ApplicationTerm
@@ -136,4 +143,4 @@ letGroup lhss = namedTermsToLets $ fixRecursion $ makeCallGraph lhss
 
 {-- letGroup [NamedTerm n def] t = LetInTerm (NamedTerm n def) t
 letGroup (n:ns) t = LetInTerm n $ letGroup ns t
-letGroup [] _ = error "Provide at least one named term." --}
+letGroup [] _ = error "Provide at least one named term."  --}
