@@ -123,16 +123,16 @@ algorithmW fac defs env constraints term = case term of
         let (a1, fac1) = first TyVar $ freshVar fac
         let (a2, fac2) = freshVar fac1
         
-        (tt2, s, fac2, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
+        (tt2, s, fac3, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
         
-        return (typedAbstractionTerm (Arrow (Just a2) (s a1) (termType tt2)) term tt2, s, fac2, constraints1)
+        return (typedAbstractionTerm (Arrow (Just a2) (s a1) (termType tt2)) term tt2, s, fac3, constraints1)
 
     ApplicationTerm t1 t2 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
         let (a2, fac2) = freshVar fac1
         
-        (tt1, s1, fac3, constraints1) <- algorithmW fac1 defs env constraints t1
-        (tt2, s2, fac4, constraints2) <- algorithmW fac2 defs (M.map s1 env) constraints1 t2
+        (tt1, s1, fac3, constraints1) <- algorithmW fac2 defs env constraints t1
+        (tt2, s2, fac4, constraints2) <- algorithmW fac3 defs (M.map s1 env) constraints1 t2
         
         (s3, constraints3) <- unify (s2 $ termType tt1) (Arrow (Just a2) (termType tt2) a1) constraints2
         
@@ -155,10 +155,10 @@ algorithmW fac defs env constraints term = case term of
     ListTerm ts -> 
      -- Unify the types of all members of the list literal.
      let inferMember (ty, s1, fac1, constraints, typedTerms) term = do
-             (tt, s2, fac1, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+             (tt, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
              (s3, constraints2) <- unify ty (termType tt) constraints1
              let sx = s3 . s2 . s1
-             return (sx ty, sx, fac1, constraints2, typedTerms ++ [tt])
+             return (sx ty, sx, fac2, constraints2, typedTerms ++ [tt])
      in case ts of
          []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
          (t:ts) -> do
