@@ -28,7 +28,7 @@ parseHaskellModule :: HsModule -> HaskellProgram
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     let (defs, lets) = partitionEithers $ concatMap parseDeclaration declarations
      in HaskellProgram {datatypes = foldr addDataDef initEnv defs,
-                        topExpr = multipleLets lets (VariableTerm {varName = "main"})}
+                        topExpr = letGroup lets (VariableTerm {varName = "main"})}
 
 -- | Parses a data or function declaration.
 parseDeclaration :: HsDecl -> [Either DataDef NamedTerm]
@@ -74,7 +74,7 @@ parseExpression expr = case expr of
     HsLambda _ patterns bodyExpr -> parseLambda patterns (HsUnGuardedRhs bodyExpr) []
     
     HsLet letDeclarations inExpr ->
-        multipleLets (concatMap (rights . parseDeclaration) letDeclarations) 
+        letGroup (concatMap (rights . parseDeclaration) letDeclarations) 
                      (parseExpression inExpr)
     
     HsIf firstExpr thenExpr elseExpr ->
@@ -181,7 +181,7 @@ parseLambda patterns rhs whereDeclarations =
             arguments = map parseNamePattern patterns
             bodyTerm  = case whereDeclarations of
                 [] -> parseRightHandSide rhs
-                _  -> multipleLets (concatMap (map nodata . parseDeclaration) whereDeclarations) 
+                _  -> letGroup (concatMap (map nodata . parseDeclaration) whereDeclarations) 
                                    (parseRightHandSide rhs)
             nodata (Left _) = error "Data declaration in where clause illegal."
             nodata (Right term) = term

@@ -28,8 +28,12 @@ formatTerm term indentation = case term of
     CaseTerm {exprTerm = exprTerm, alts = alts} ->
         "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
         ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
-    ListTerm {terms = terms} -> "[" ++ intercalate ", " (map (flip formatTerm "") terms) ++ "]"
-    TupleTerm {terms = terms} -> "(" ++ intercalate ", " (map (flip formatTerm "") terms) ++ ")"
+    ListTerm {terms = terms} -> 
+        "[" ++ intercalate ", " (map (flip formatTerm "") terms) ++ "]"
+    TupleTerm {terms = terms} -> 
+        "(" ++ intercalate ", " (map (flip formatTerm "") terms) ++ ")"
+    FixTerm t ->
+        "fix (" ++ formatTerm t "" ++ ")"
 
 -- Formats a named term.
 formatNamedTerm :: NamedTerm -> String -> String
