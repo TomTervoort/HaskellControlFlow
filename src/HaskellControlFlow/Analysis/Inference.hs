@@ -12,6 +12,8 @@ import qualified Data.Map as M
 import Control.Arrow
 import Control.Monad
 
+import Debug.Trace
+
 -- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
 
@@ -156,6 +158,7 @@ algorithmW fac defs env constraints term =
 
   CaseTerm t1 pats ->
    do (ty1, s1, fac', constraints') <- algorithmW fac defs env constraints t1
+      return (ty1, s1, fac', constraints')
       let handlePatterns [] = fail "Empty case statement."
           handlePatterns ((Variable n,        term):_ ) = 
            do (ty, s2, fac', constraints'') <- algorithmW fac' defs (M.map s1 env) constraints' term
@@ -170,8 +173,10 @@ algorithmW fac defs env constraints term =
                                   let s3 = foldr (.) id $ zipWith subTyVar args ats
                                   -- Infer term.
                                   let sx = s3 . s2 . s1
-                                  (ty2, s4, fac', constraints') <- algorithmW fac' defs (M.map sx env) constraints term
-                                  (ty3, s5, fac', constraints'') <- handlePatterns ps
+                                  (ty2, s4, fac', constraints')  <- algorithmW fac' defs (M.map sx env) constraints term
+                                  (ty3, s5, fac', constraints'') <- if null ps 
+                                                                    then return (ty2, id, fac', constraints') 
+                                                                    else handlePatterns ps
                                   -- Unify types of different terms.
                                   s6 <- unify ty2 ty3
                                   -- Done.

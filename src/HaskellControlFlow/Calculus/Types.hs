@@ -23,7 +23,25 @@ data Type = BasicType BasicType
           | Arrow (Maybe AnnVar) Type Type
           | TyVar Name
           -- | Forall Name Type (polymorphism)
-           deriving (Show)
+
+instance Show Type where
+    showsPrec n (BasicType k) = showsPrec n k
+    showsPrec _ (DataType k) = (k++)
+    showsPrec _ (ListType ty)
+        = ("["++)
+        . showsPrec 0 ty
+        . ("]"++)
+    showsPrec _ (TupleType tys)
+        = ("("++)
+        . (intercalate ", " (map (\t -> showsPrec 0 t "") tys) ++)
+        . (")"++)
+    showsPrec n (Arrow _ lhs rhs)
+        = ((if n > 0 then "(" else "")++)
+        . showsPrec 10 lhs
+        . ((if n > 0 then ")" else "")++)
+        . (" -> "++)
+        . showsPrec 0 rhs
+    showsPrec n (TyVar k) = (k++)
 
 -- | A few build-in types.
 data BasicType = Integer
@@ -47,18 +65,19 @@ type TyEnv = Map Name Type
 initTyEnv :: TyEnv
 initTyEnv = M.fromList stdOps
  where stdOps = [
-                   ("negate"       , Integer .> Integer)
-                 , ("+"            , Integer .> Integer)
-                 , ("-"            , Integer .> Integer)
-                 , ("*"            , Integer .> Integer)
-                 , ("div"          , Integer .> Integer)
-                 , ("ord"          , Char    .> Integer)
-                 , ("chr"          , Integer .> Char   )
-                 , ("round"        , Double  .> Integer)
-                 , ("fromIntegral" , Integer .> Double )
-                 , ("/"            , Double  .> Double )
+                   ("negate"       , BasicType Integer .> BasicType Integer)
+                 , ("+"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("-"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("*"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("div"          , BasicType Integer .> BasicType Integer .> BasicType Integer)
+                 , ("ord"          , BasicType Char    .> BasicType Integer)
+                 , ("chr"          , BasicType Integer .> BasicType Char   )
+                 , ("round"        , BasicType Double  .> BasicType Integer)
+                 , ("fromIntegral" , BasicType Integer .> BasicType Double )
+                 , ("/"            , BasicType Double  .> BasicType Double  .> BasicType Double )
                 ]
-       a .> b = Arrow Nothing (BasicType a) (BasicType b)
+       a .> b = Arrow Nothing a b
+       infixr 3 .>
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 
 --   must be regular and can not be paramterized.
