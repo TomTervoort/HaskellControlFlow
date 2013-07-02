@@ -9,7 +9,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.List
 
-
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
 --   expression (all functions are nested let expressions) and a collection of defined data types.
 data HaskellProgram = HaskellProgram {datatypes :: DataEnv, topExpr :: Calculus}
@@ -71,9 +70,9 @@ type TyEnv = Map Name Type
 --   "Char" or "Double"; or considers the type to be a custom data type.
 typeFromName :: String -> Type
 typeFromName "Integer" = BasicType Integer
-typeFromName "Char" = BasicType Char
-typeFromName "Double" = BasicType Double
-typeFromName datatype = DataType datatype
+typeFromName "Char"    = BasicType Char
+typeFromName "Double"  = BasicType Double
+typeFromName datatype  = DataType datatype
 
 -- | An environment of types of some standard functions with which basic types can be manipulated.
 initTyEnv :: TyEnv

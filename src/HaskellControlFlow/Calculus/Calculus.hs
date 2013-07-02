@@ -25,7 +25,7 @@ multipleLets [] _ = error "Provide at least one named term."
 -- | Patterns within case-expressions.
 data Pattern = Variable Name
              | Pattern {ctorName :: Name, ctorArgs :: [Name]}
-                deriving (Show)
+               deriving (Show)
 
 -- | Named term.
 data NamedTerm = NamedTerm {name :: Name, term :: Term}
