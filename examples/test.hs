@@ -14,10 +14,16 @@ main = baz bar abc
         abc = 3
 
 not x = if x then False else True
+
+data A = B a | C b
+
+main = let abc a = case a of
+                      B c -> c
+                      C d -> d
+       in abc (B 1)
+
 -}
 
-data A = B | C
-
-main = let abc a b = 1
-       in abc 1 3
-
+main = baz 1 2
+    where
+        baz a b = a

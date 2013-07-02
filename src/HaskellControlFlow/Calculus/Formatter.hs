@@ -25,7 +25,7 @@ formatTerm term indentation = case term of
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTerm inTerm ('\t' : indentation)
     CaseTerm {exprTerm = exprTerm, alts = alts} ->
         "\n" ++ indentation ++ "case " ++ formatTerm exprTerm indentation ++ " of"
-        ++ concatMap (\(patt, expr) -> formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
+        ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTerm expr ('\t' : indentation)) alts
     ListTerm {terms = terms} -> "[" ++ intercalate ", " (map (flip formatTerm "") terms) ++ "]"
     TupleTerm {terms = terms} -> "(" ++ intercalate ", " (map (flip formatTerm "") terms) ++ ")"
 
@@ -44,4 +44,4 @@ formatConstant constant = case constant of
 
 formatPattern :: Pattern -> String
 formatPattern (Variable name) = name
-formatPattern (Pattern ctor args) = "(" ++ ctor ++ concatMap (" "++) args ++ ")"
+formatPattern (Pattern ctor args) = "(" ++ ctor ++ concatMap (' ':) args ++ ")"
