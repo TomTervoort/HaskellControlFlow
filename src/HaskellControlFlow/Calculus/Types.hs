@@ -66,6 +66,11 @@ type AnnConstraints = [AnnConstraint]
 -- | A type environment: a mapping from variable names to their inferred types.
 type TyEnv = Map Name Type
 
+-- | Returns a possible type annotation.
+typeAnn :: Type -> Maybe AnnVar
+typeAnn (Arrow ann _ _) = ann
+typeAnn _               = Nothing
+
 -- | Gives the type with a certain name. Either returns a basic type if the String equals "Integer",
 --   "Char" or "Double"; or considers the type to be a custom data type.
 typeFromName :: String -> Type

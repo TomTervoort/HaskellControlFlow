@@ -28,5 +28,5 @@ app x = x 1
 
 main = app bar + app baz
     where
-        bar x = x + 3
-        baz x = x * 3
+        bar x = x+3
+        baz x = x*3

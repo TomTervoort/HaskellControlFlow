@@ -119,11 +119,13 @@ algorithmW fac defs env constraints term = case term of
             Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
             Just ty -> return (typedVariableTerm ty term, id, fac, constraints)
 
-    AbstractionTerm x t1 -> do
+    AbstractionTerm name t1 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
         let (a2, fac2) = freshVar fac1
         
-        (tt2, s, fac3, constraints1) <- algorithmW fac2 defs (M.insert x a1 env) constraints t1
+        let env1 = M.insert name a1 env
+        
+        (tt2, s, fac3, constraints1) <- algorithmW fac2 defs env1 constraints t1
         
         return (typedAbstractionTerm (Arrow (Just a2) (s a1) (termType tt2)) term tt2, s, fac3, constraints1)
 
