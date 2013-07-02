@@ -30,7 +30,7 @@ data Term = ConstantTerm {constant :: Constant}
 -- | Patterns within case-expressions.
 data Pattern = Variable Name
              | Pattern {ctorName :: Name, ctorArgs :: [Name]}
-                deriving (Show)
+               deriving (Show)
 
 -- | Named term.
 data NamedTerm = NamedTerm {name :: Name, term :: Term}
