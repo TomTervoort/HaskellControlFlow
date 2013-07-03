@@ -9,39 +9,51 @@ import HaskellControlFlow.Calculus.TypedCalculus
 import HaskellControlFlow.Analysis.Inference
 
 import System.Environment
+import Data.List
 
 -- | Walks over typed tree, and shows possible functions of applications.
-showAnalysis :: TypedTerm -> IO ()
-showAnalysis tt = case tt of
-    TypedConstantTerm {} -> return ()
-    TypedVariableTerm {} -> return ()
+showAnalysis :: AnnEnv -> TypedTerm -> IO ()
+showAnalysis annEnv tt = case tt of
+    TypedConstantTerm {} ->
+        return ()
+        
+    TypedVariableTerm {} ->
+        return ()
+        
+    TypedFixTerm {fixedTerm = fixedTerm} -> do
+        showAnalysis annEnv fixedTerm
+    
     TypedApplicationTerm {lhsTerm = lhsTerm, rhsTerm = rhsTerm} -> do
-        showAnalysis lhsTerm
-        showAnalysis rhsTerm
+        showAnalysis annEnv lhsTerm
+        showAnalysis annEnv rhsTerm
         
         putStrLn $ "Left hand side type: " ++ (show $ termType lhsTerm)
         putStrLn $ "Right hand side type: " ++ (show $ termType rhsTerm)
         
         case typeAnn $ termType lhsTerm of
-            Just var -> putStrLn var
-            Nothing  -> putStrLn "This should not happen: left hand side should be a function."
+            Just var ->
+                putStrLn $ "Possible appliction functions: " ++ (intercalate ", " $ lookupAnnNames var annEnv)
+            Nothing ->
+                putStrLn "This should not happen: left hand side should have an annotation."
         
-        putStrLn "\n"
+        putStr "\n"
         
-    TypedAbstractionTerm {bodyTerm = bodyTerm} -> showAnalysis bodyTerm
+    TypedAbstractionTerm {bodyTerm = bodyTerm} ->
+        showAnalysis annEnv bodyTerm
+        
     TypedLetInTerm {letTerm = (NamedTypedTerm {term = letTerm}), inTerm = inTerm} -> do
-        showAnalysis letTerm
-        showAnalysis inTerm
+        showAnalysis annEnv letTerm
+        showAnalysis annEnv inTerm
         
     TypedCaseTerm {exprTerm = exprTerm, alts = alts} -> do
-        showAnalysis exprTerm
-        mapM_ (\(p, term) -> showAnalysis term) alts
+        showAnalysis annEnv exprTerm
+        mapM_ (\(_, term) -> showAnalysis annEnv term) alts
         
     TypedListTerm {terms = terms} -> do
-        mapM_ showAnalysis terms
+        mapM_ (showAnalysis annEnv) terms
         
     TypedTupleTerm {terms = terms} -> do
-        mapM_ showAnalysis terms
+        mapM_ (showAnalysis annEnv) terms
 
 -- | Main method.
 main :: IO ()
@@ -57,23 +69,25 @@ main = do
     program <- parseHaskellFile filename
     
     -- Show it.
-    putStr $ formatCalculus (topExpr program)
+    putStrLn "Extended calculus of program:"
+    putStrLn $ formatCalculus (topExpr program)
     
     -- Analyse it.
     let env = constructorTypes (datatypes program) initTyEnv
-    (programType, tt, finalEnv, constraints) <- inferPrincipalType (topExpr program) (datatypes program) env
+    (programType, tt, _, annEnv) <- inferPrincipalType (topExpr program) (datatypes program) env
+    
+    -- Show main type.
+    putStrLn $ "Type of the 'main' function: " ++ show programType ++ "\n"
     
     -- Show analysis.
-    showAnalysis tt
+    putStrLn "Result of the control flow analysis:\n"
+    showAnalysis annEnv tt
     
-    
-    
-    putStrLn $ show programType
-    putStrLn "\n"
-    putStrLn $ show finalEnv
-    putStrLn "\n"
-    putStrLn $ show constraints
-    putStrLn "\n"
-    putStrLn $ show tt
+    -- putStrLn "\n"
+    -- putStrLn $ show finalEnv
+    -- putStrLn "\n"
+    -- putStrLn $ show annEnv
+    -- putStrLn "\n"
+    -- putStrLn $ show tt
     
     return ()

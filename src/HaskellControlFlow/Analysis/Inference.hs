@@ -247,11 +247,27 @@ solveAnnConstraints (x:xs) = case x of
     SubstituteConstraint first second ->
         let (allNames, substitutions) = solveAnnConstraints xs
         in case M.lookup (cannonicalVarName first substitutions) allNames of
-            Just _  -> (allNames, insertSubsitution second first substitutions)
-            Nothing -> (allNames, insertSubsitution first second substitutions)
+            Just _  -> insertSubsitution second first allNames substitutions
+            Nothing -> insertSubsitution first second allNames substitutions
         where
-            insertSubsitution first second substitutions =
-                M.insert first (cannonicalVarName second substitutions) substitutions
+            insertSubsitution first second allNames substitutions =
+                let
+                    realSecond = cannonicalVarName second substitutions
+                in
+                    case M.lookup first substitutions of
+                        Just existing ->
+                            -- Let's merge these two.
+                            let
+                                firstNames       = M.findWithDefault S.empty existing allNames
+                                secondNames      = M.findWithDefault S.empty realSecond allNames
+                                unionNames       = firstNames `S.union` secondNames
+                                newAllNames      = M.delete realSecond $ M.insert existing unionNames allNames
+                                newSubstitutions = M.insert realSecond existing substitutions
+                            in
+                                (newAllNames, newSubstitutions)
+                        Nothing ->
+                            -- Insert a new one.
+                            (allNames, M.insert first realSecond substitutions)
             
             cannonicalVarName var substitutions = case M.lookup var substitutions of
                 Just substitution -> substitution
