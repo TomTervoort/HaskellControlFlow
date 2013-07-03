@@ -27,14 +27,14 @@ showAnalysis annEnv tt = case tt of
         showAnalysis annEnv lhsTerm
         showAnalysis annEnv rhsTerm
         
-        putStrLn $ "Left hand side type: " ++ (show $ termType lhsTerm)
-        putStrLn $ "Right hand side type: " ++ (show $ termType rhsTerm)
+        putStrLn $ "Left hand side type: " ++ (show $ termType lhsTerm)  -- TODO: This still has unresolved vars!
+        putStrLn $ "Right hand side type: " ++ (show $ termType rhsTerm) -- TODO: This still has unresolved vars!
         
         case typeAnn $ termType lhsTerm of
             Just var ->
-                putStrLn $ "Possible appliction functions: " ++ (intercalate ", " $ lookupAnnNames var annEnv)
+                putStrLn $ "Possible named functions: " ++ (intercalate ", " $ lookupAnnNames var annEnv)
             Nothing ->
-                putStrLn "This should not happen: left hand side should have an annotation."
+                putStrLn "Possible named functions: none"
         
         putStr "\n"
         

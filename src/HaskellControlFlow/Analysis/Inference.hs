@@ -121,13 +121,12 @@ algorithmW fac defs env constraints term = case term of
 
     AbstractionTerm name t1 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
-        let (a2, fac2) = freshVar fac1
         
         let env1 = M.insert name a1 env
         
-        (tt2, s, fac3, constraints1) <- algorithmW fac2 defs env1 constraints t1
+        (tt2, s, fac2, constraints1) <- algorithmW fac1 defs env1 constraints t1
         
-        return (typedAbstractionTerm (Arrow (Just a2) (s a1) (termType tt2)) term tt2, s, fac3, constraints1)
+        return (typedAbstractionTerm (Arrow Nothing (s a1) (termType tt2)) term tt2, s, fac2, constraints1)
 
     ApplicationTerm t1 t2 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
@@ -141,18 +140,26 @@ algorithmW fac defs env constraints term = case term of
         return (typedApplicationTerm (s3 a1) term tt1 tt2, s3 . s2 . s1, fac4, constraints3)
 
     LetInTerm (NamedTerm name t1) t2 -> do
-        (tt1, s1, fac1, constraints1) <- algorithmW fac defs env constraints t1
+        let (a1, fac1) = freshVar fac
         
-        let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) (termType tt1)) env
+        (tt1, s1, fac2, constraints1) <- algorithmW fac1 defs env constraints t1
         
-        (tt2, s2, fac2, constraints2) <- algorithmW fac1 defs env1 constraints1 t2
+        let newType =
+                case termType tt1 of
+                        Arrow _ from to -> Arrow (Just a1) from to
+                        x               -> x
+        
+        let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) newType) env
+        
+        (tt2, s2, fac3, constraints2) <- algorithmW fac2 defs env1 constraints1 t2
         
         let constraints3 =
                 case termType tt1 of
-                    Arrow (Just a) _ _ -> (InclusionConstraint a name) : constraints2
-                    _                  -> constraints2
+                    Arrow (Just a2) _ _ -> (InclusionConstraint a1 name) : (SubstituteConstraint a1 a2) : constraints2
+                    Arrow Nothing _ _   -> (InclusionConstraint a1 name) : constraints2
+                    _                   -> constraints2
         
-        return (typedLetInTerm (termType tt2) term (namedTypedTerm name tt1) tt2, s2 . s1, fac2, constraints3)
+        return (typedLetInTerm (termType tt2) term (namedTypedTerm name tt1) tt2, s2 . s1, fac3, constraints3)
 
     ListTerm ts -> 
      -- Unify the types of all members of the list literal.
