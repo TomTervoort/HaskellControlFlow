@@ -12,7 +12,7 @@ import Data.Either
 import Data.Maybe
 
 -- | Parses a haskell file.
-parseHaskellFile :: FilePath -> IO HaskellProgram
+parseHaskellFile :: FilePath -> IO (HaskellProgram ())
 parseHaskellFile filename = do
     -- Read file contents.
     contents <- readFile filename
@@ -24,14 +24,14 @@ parseHaskellFile filename = do
             error $ filename ++ (':' : show line) ++ (':' : show column) ++ (':' : message)
 
 -- | Parses a module.
-parseHaskellModule :: HsModule -> HaskellProgram
+parseHaskellModule :: HsModule -> HaskellProgram ()
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     let (defs, lets) = partitionEithers $ concatMap parseDeclaration declarations
      in HaskellProgram {datatypes = foldr addDataDef initEnv defs,
                         topExpr = letGroup lets (VariableTerm {varName = "main"})}
 
 -- | Parses a data or function declaration.
-parseDeclaration :: HsDecl -> [Either DataDef NamedTerm]
+parseDeclaration :: HsDecl -> [Either DataDef (NamedTerm ())]
 parseDeclaration declaration = case declaration of
     HsTypeDecl _ _ _ _ -> error "Type synonyms not supported."
     HsTypeSig _ _ _    -> [] -- We ignore type signatures and infer everything ourselves.
@@ -56,7 +56,7 @@ parseDeclaration declaration = case declaration of
     HsForeignExport _ _ _ _ _   -> error "Foreign export not supported."
 
 -- | Parses an expression.
-parseExpression :: HsExp -> Term
+parseExpression :: HsExp -> Term ()
 parseExpression expr = case expr of    
     HsVar name ->
         VariableTerm {varName = parseQName name}
@@ -88,22 +88,22 @@ parseExpression expr = case expr of
     HsExpTypeSig _ subExpr _ -> parseExpression subExpr
     
     HsInfixApp l op r -> 
-        ApplicationTerm {lhsTerm = ApplicationTerm (parseOperator op) (parseExpression l)
+        ApplicationTerm {lhsTerm = ApplicationTerm () (parseOperator op) (parseExpression l)
                         ,rhsTerm = parseExpression r}
 
-    HsLeftSection exp op  -> ApplicationTerm (parseOperator op) (parseExpression exp)
+    HsLeftSection exp op  -> ApplicationTerm () (parseOperator op) (parseExpression exp)
     
     HsNegApp subExpr -> 
-        ApplicationTerm (VariableTerm "negate") $ parseExpression subExpr
+        ApplicationTerm () (VariableTerm () "negate") $ parseExpression subExpr
 
     HsCase expr alternatives -> 
      CaseTerm {exprTerm = parseExpression expr,
                alts     = map parseCaseAlternative alternatives}
 
     HsTuple values -> 
-     TupleTerm $ map parseExpression values
+     TupleTerm () $ map parseExpression values
     HsList values -> 
-     ListTerm $ map parseExpression values
+     ListTerm () $ map parseExpression values
 
     -- Unsuported features.
     HsDo _                 -> error "Do notation not supported."
@@ -121,7 +121,7 @@ parseExpression expr = case expr of
     HsIrrPat _  -> error "Pattern matching only supported on the first argument or within case alternatives."
 
 -- | Parses a literal (constant) value.
-parseLiteral :: HsLiteral -> Term
+parseLiteral :: HsLiteral -> Term ()
 parseLiteral literal = case literal of
     HsChar char	    -> ConstantTerm {constant = CharConst char}
     HsString string	-> ConstantTerm {constant = StringConst string}
@@ -148,14 +148,14 @@ parseName fullName = case fullName of
 
 -- | Parses a set of bindings to the same function. Unless there is only a single match with a 
 --   variable, the resulting term will be a case expression.
-parseFunBindings :: [HsMatch] -> (Name, Term)
+parseFunBindings :: [HsMatch] -> (Name, Term ())
 parseFunBindings ms = 
  case map parseFuncBinding ms of
   []          -> error "Empty list passed to parseFunBindings."
-  [(n, Just (Variable v), t)] -> (n, AbstractionTerm v t)
+  [(n, Just (Variable v), t)] -> (n, AbstractionTerm () v t)
   [(n, Nothing, t)]           -> (n, t)
-  xs                          -> (getName xs, AbstractionTerm fresh 
-                                                $ CaseTerm (VariableTerm fresh) (map getAlt xs))
+  xs                          -> (getName xs, AbstractionTerm () fresh 
+                                                $ CaseTerm () (VariableTerm () fresh) (map getAlt xs))
  
  where fresh = "@" -- Not really a fresh variable. But since @ is an illegal Haskell identifier
                    -- it can not shadow user code.
@@ -167,14 +167,14 @@ parseFunBindings ms =
 -- | Parses a function binding. Unless it has no arguments (in which case the second result is 
 --   Nothing) the first argument will be parsed as a pattern (but may still be a variable) while 
 --   any others are required to be variables and are rewritten to abstractions within the Term.
-parseFuncBinding :: HsMatch -> (Name, Maybe Pattern, Term)
+parseFuncBinding :: HsMatch -> (Name, Maybe Pattern, Term ())
 parseFuncBinding (HsMatch _ name args rhs whereDecls) =
  case args of
   []     -> (parseName name, Nothing, parseLambda args rhs whereDecls)
   (a:as) -> (parseName name, Just $ parsePattern a, parseLambda as rhs whereDecls)
 
 -- | Parses a lambda expression.
-parseLambda :: [HsPat] -> HsRhs -> [HsDecl] -> Term
+parseLambda :: [HsPat] -> HsRhs -> [HsDecl] -> Term ()
 parseLambda patterns rhs whereDeclarations = 
     foldr (\arg term -> AbstractionTerm {argName = arg, bodyTerm = term}) bodyTerm arguments
         where
@@ -187,7 +187,7 @@ parseLambda patterns rhs whereDeclarations =
             nodata (Right term) = term
 
 -- | Parses a right hand side.
-parseRightHandSide :: HsRhs -> Term
+parseRightHandSide :: HsRhs -> Term ()
 parseRightHandSide rhs = case rhs of
     HsUnGuardedRhs expr -> parseExpression expr
     
@@ -204,15 +204,15 @@ parseNamePattern pattern = case pattern of
     _ -> error "Pattern matching is only supported on the first argument or within case alternatives."
 
 -- | Parses an operator. 
-parseOperator :: HsQOp -> Term
+parseOperator :: HsQOp -> Term ()
 parseOperator op = case op of
-                    HsQVarOp n -> VariableTerm $ parseQName n
-                    HsQConOp n -> VariableTerm $ parseQName n
+                    HsQVarOp n -> VariableTerm () $ parseQName n
+                    HsQConOp n -> VariableTerm () $ parseQName n
 
 -- | Parses a single case alternative.
-parseCaseAlternative :: HsAlt -> (Pattern, Term)
+parseCaseAlternative :: HsAlt -> (Pattern, Term ())
 parseCaseAlternative (HsAlt _ pat (HsUnGuardedAlt rhs) _) = (parsePattern pat, parseExpression rhs)
-parseCaseAlternative (HsAlt _ _ (HsGuardedAlts _) _) = error "Guards are not supported."  
+parseCaseAlternative (HsAlt _ _   (HsGuardedAlts _)    _) = error "Guards are not supported."  
 
 -- | Parses a pattern.
 parsePattern :: HsPat -> Pattern

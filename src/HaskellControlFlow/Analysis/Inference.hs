@@ -3,7 +3,6 @@
 module HaskellControlFlow.Analysis.Inference where
 
 import HaskellControlFlow.Calculus.Calculus
-import HaskellControlFlow.Calculus.TypedCalculus as T
 import HaskellControlFlow.Calculus.Types
 
 import Data.Set (Set)
@@ -109,43 +108,49 @@ constantType c = case c of
     StringConst  _ -> ListType (BasicType Char)
 
 -- | Implements algorithm W for type inference.
-algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term -> m (TypedTerm, TySubst, VarFactory, AnnConstraints)
+algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term () -> m (Term Type, TySubst, VarFactory, AnnConstraints)
 algorithmW fac defs env constraints term = case term of
-    ConstantTerm c ->
-         return (typedConstantTerm (constantType c) term, id, fac, constraints)
+    ConstantTerm _ c ->
+         return (ConstantTerm {annotation = (constantType c), constant = constant term}, id, fac, constraints)
 
-    VariableTerm name -> 
+    VariableTerm _ name -> 
         case M.lookup name env of
             Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
-            Just ty -> return (typedVariableTerm ty term, id, fac, constraints)
+            Just ty -> return (VariableTerm {annotation = ty, varName = varName term}, id, fac, constraints)
 
-    AbstractionTerm name t1 -> do
+    AbstractionTerm _ name t1 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
         
         let env1 = M.insert name a1 env
         
-        (tt2, s, fac2, constraints1) <- algorithmW fac1 defs env1 constraints t1
+        (tt1, s, fac2, constraints1) <- algorithmW fac1 defs env1 constraints t1
         
-        return (typedAbstractionTerm (Arrow Nothing (s a1) (termType tt2)) term tt2, s, fac2, constraints1)
+        let termType  = Arrow Nothing (s a1) (annotation tt1)
+        let typedTerm = AbstractionTerm {annotation = termType, argName = argName term, bodyTerm = tt1}
+        
+        return (typedTerm, s, fac2, constraints1)
 
-    ApplicationTerm t1 t2 -> do
+    ApplicationTerm _ t1 t2 -> do
         let (a1, fac1) = first TyVar $ freshVar fac
         let (a2, fac2) = freshVar fac1
         
         (tt1, s1, fac3, constraints1) <- algorithmW fac2 defs env constraints t1
         (tt2, s2, fac4, constraints2) <- algorithmW fac3 defs (M.map s1 env) constraints1 t2
         
-        (s3, constraints3) <- unify (s2 $ termType tt1) (Arrow (Just a2) (termType tt2) a1) constraints2
+        (s3, constraints3) <- unify (s2 $ annotation tt1) (Arrow (Just a2) (annotation tt2) a1) constraints2
         
-        return (typedApplicationTerm (s3 a1) term tt1 tt2, s3 . s2 . s1, fac4, constraints3)
+        let termType  = s3 a1
+        let typedTerm = ApplicationTerm {annotation = termType, lhsTerm = tt1, rhsTerm = tt2}
+        
+        return (typedTerm, s3 . s2 . s1, fac4, constraints3)
 
-    LetInTerm (NamedTerm name t1) t2 -> do
+    LetInTerm _ (NamedTerm name t1) t2 -> do
         let (a1, fac1) = freshVar fac
         
         (tt1, s1, fac2, constraints1) <- algorithmW fac1 defs env constraints t1
         
         let newType =
-                case termType tt1 of
+                case annotation tt1 of
                         Arrow _ from to -> Arrow (Just a1) from to
                         x               -> x
         
@@ -154,43 +159,61 @@ algorithmW fac defs env constraints term = case term of
         (tt2, s2, fac3, constraints2) <- algorithmW fac2 defs env1 constraints1 t2
         
         let constraints3 =
-                case termType tt1 of
+                case annotation tt1 of
                     Arrow (Just a2) _ _ -> (InclusionConstraint a1 name) : (SubstituteConstraint a1 a2) : constraints2
                     Arrow Nothing _ _   -> (InclusionConstraint a1 name) : constraints2
                     _                   -> constraints2
         
-        return (typedLetInTerm (termType tt2) term (namedTypedTerm name tt1) tt2, s2 . s1, fac3, constraints3)
+        let termType  = annotation tt2
+        let typedTerm = LetInTerm {annotation = termType, letTerm = NamedTerm name (tt1 {annotation = newType}), inTerm = tt2}
+        
+        return (typedTerm, s2 . s1, fac3, constraints3)
 
-    ListTerm ts -> 
+    ListTerm _ ts -> 
      -- Unify the types of all members of the list literal.
      let inferMember (ty, s1, fac1, constraints, typedTerms) term = do
              (tt, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
-             (s3, constraints2) <- unify ty (termType tt) constraints1
+             (s3, constraints2) <- unify ty (annotation tt) constraints1
+             
              let sx = s3 . s2 . s1
+             
              return (sx ty, sx, fac2, constraints2, typedTerms ++ [tt])
      in case ts of
          []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
          (t:ts) -> do
-             (tt1, s2, fac1, constraints1) <- algorithmW fac defs env constraints t
-             (ty, s, fac1, constraints1, typedTerms) <- foldM inferMember (termType tt1, s2, fac1, constraints1, []) ts
-             return (typedListTerm (ListType ty) term typedTerms, s, fac1, constraints1)
+             (tt1, s2, fac1, constraints1)            <- algorithmW fac defs env constraints t
+             (ty, s3, fac1, constraints2, typedTerms) <- foldM inferMember (annotation tt1, s2, fac1, constraints1, []) ts
+             
+             let termType  = ListType ty
+             let typedTerm = ListTerm {annotation = termType, terms = typedTerms}
+             
+             return (typedTerm, s3, fac1, constraints2)
 
-    TupleTerm ts ->
+    TupleTerm _ ts ->
         -- Similar to inferring lists, but types of members do not have to match.
         let inferMember (tys, s1, fac1, constraints, typedTerms) term = do
                 (tt, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints term
+                
                 let sx = s2 . s1
-                return (tys ++ [sx $ termType tt], sx, fac2, constraints1, typedTerms ++ [tt])
+                
+                return (tys ++ [sx $ annotation tt], sx, fac2, constraints1, typedTerms ++ [tt])
         in do
             (tys, s, fac1, constraints1, typedTerms) <- foldM inferMember ([], id, fac, constraints, []) ts
-            return (typedTupleTerm (TupleType tys) term typedTerms, s, fac1, constraints1)
+             
+            let termType  = TupleType tys
+            let typedTerm = TupleTerm {annotation = termType, terms = typedTerms}
+            
+            return (typedTerm, s, fac1, constraints1)
 
-    CaseTerm t1 patterns -> do
+    CaseTerm _ t1 patterns -> do
         (tt, s1, fac1, constaints1) <- algorithmW fac defs env constraints t1
         
-        (ty, s2, fac2, constaints2, typedAlts) <- handlePatterns (termType tt, s1, fac1, constaints1) patterns
+        (ty, s2, fac2, constaints2, typedAlts) <- handlePatterns (annotation tt, s1, fac1, constaints1) patterns
         
-        return (typedCaseTerm ty term tt typedAlts, s2, fac2, constaints2)
+        let termType  = ty
+        let typedTerm = CaseTerm {annotation = termType, exprTerm = tt, alts = typedAlts}
+        
+        return (typedTerm, s2, fac2, constaints2)
         
         where
             handlePatterns _ [] = fail "Empty case statement."
@@ -199,7 +222,7 @@ algorithmW fac defs env constraints term = case term of
                 
                 (tt, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints pTerm
                 
-                return (termType tt, s2 . s1, fac2, constraints1, [(p, tt)])
+                return (annotation tt, s2 . s1, fac2, constraints1, [(p, tt)])
 
             handlePatterns (ty1, s1, fac1, constraints) ((p@(Pattern name args), pTerm):ps) =
                  case lookUpConTypes name defs of
@@ -218,24 +241,29 @@ algorithmW fac defs env constraints term = case term of
                          (tt, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) constraints1 pTerm
                          (ty3, s5, fac3, constraints3, typedAlts) <-
                              if null ps 
-                             then return (termType tt, id, fac2, constraints2, []) 
-                             else handlePatterns (termType tt, id, fac2, constraints2) ps
+                             then return (annotation tt, id, fac2, constraints2, []) 
+                             else handlePatterns (annotation tt, id, fac2, constraints2) ps
                          
                          -- Unify types of different terms.
-                         (s6, constraints4) <- unify (termType tt) ty3 constraints3
+                         (s6, constraints4) <- unify (annotation tt) ty3 constraints3
                          
                          -- Done.
                          let sy = s6 . s5 . s4 . sx
-                         return (sy (termType tt), sy, fac3, constraints4, (p, tt) : typedAlts)
+                         return (sy (annotation tt), sy, fac3, constraints4, (p, tt) : typedAlts)
 
-    FixTerm term ->
+    FixTerm _ term ->
      do (fty, s, fac1, c1) <- algorithmW fac defs env constraints term
 
         -- The fixed term should be of type a -> a for some a. After applying the fix operator, the 
         -- resulting type will be a.
         let (ty, fac2) = first TyVar $ freshVar fac1
-        (s1, c2) <- unify (termType fty) (Arrow Nothing ty ty) c1
-        return (TypedFixTerm (s1 ty) fty, s1 . s, fac2, c2)
+        
+        (s1, c2) <- unify (annotation fty) (Arrow Nothing ty ty) c1
+        
+        let termType  = s1 ty
+        let typedTerm = FixTerm {annotation = termType, fixedTerm = fty}
+        
+        return (typedTerm, s1 . s, fac2, c2)
 
 -- | Constraint solver.
 solveAnnConstraints :: AnnConstraints -> AnnEnv
@@ -294,8 +322,8 @@ lookupAnnNames var (allNames, substitutions) =
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term -> DataEnv -> TyEnv -> m (Type, TypedTerm, TyEnv, AnnEnv)
+inferPrincipalType :: Monad m => Term () -> DataEnv -> TyEnv -> m (Type, Term Type, TyEnv, AnnEnv)
 inferPrincipalType term datas env = 
   do (tt, s, _, constraints) <- algorithmW initVarFactory datas env [] term
      let newEnv = M.map s env
-     return (gen newEnv $ termType tt, tt, newEnv, solveAnnConstraints constraints)
+     return (gen newEnv $ annotation tt, tt, newEnv, solveAnnConstraints constraints)

@@ -11,7 +11,7 @@ import Data.List
 
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
 --   expression (all functions are nested let expressions) and a collection of defined data types.
-data HaskellProgram = HaskellProgram {datatypes :: DataEnv, topExpr :: Calculus}
+data HaskellProgram a = HaskellProgram {datatypes :: DataEnv, topExpr :: Term a}
 
 -- | A Haskell type. May also contain function type annotations or type variables.
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
