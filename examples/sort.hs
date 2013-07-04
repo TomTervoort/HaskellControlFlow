@@ -1,48 +1,51 @@
-data Bool = True | False
-
-not True = False
-not False = True
+module Sort(main) where
 
 data Ordering = LT | EQ | GT
 
-data Value = Zero | One | Two | Three | MoreThanThree
+data Nat = Zero | Succ Nat
 
-compare Zero Zero = EQ
-compare Zero _ = LT
-compare _ Zero = GT
-compare One One = EQ
-compare One _ = LT
-compare _ One = GT
-compare Two Two = EQ
-compare Two _ = LT
-compare _ Two = GT
-compare Three Three = EQ
-compare Three _ = LT
-compare _ Three = GT
-compare _ _ = EQ
+data List = Nil | Cons Nat List
 
-equals x y = case compare x y of { EQ -> True; _ -> False }
+not True  = False
+not False = True
 
-data List = Nil | Cons Value List
+infinite = Succ infinite
 
-listFold n _ Nil = n
-listFold n c (Cons v vs) = c v (listFold n c vs)
+zero  = Zero
+one   = Succ Zero
+two   = Succ one
+three = Succ three
 
-minimum = listFold MoreThanThree meet
+compare x y = case x of
+    Zero -> case y of
+        Zero   -> EQ
+        Succ n -> LT
+    Succ n -> case y of
+        Zero   -> GT
+        Succ m -> compare n m
+
+listFold n c l = case l of
+    Nil         -> n
+    (Cons v vs) -> c v (listFold n c vs)
+
+minimum = listFold infinite meet
   where
     meet x y = case compare x y of
         LT -> x
-        _ -> y
+        x  -> y
+
+equals x y = case compare x y of { EQ -> True; x -> False }
 
 (.) f g x = f (g x)
 
 removeFirst p xs = case xs of
-                    Nil -> Nil
-                    Cons v vs -> case p v of
-                                  True -> vs
-                                  False -> Cons v (removeFirst p vs)
+    Nil -> Nil
+    Cons v vs -> case p v of
+        True  -> vs
+        False -> Cons v (removeFirst p vs)
 
 sort Nil = Nil
-sort xs
-  = let m = minimum xs
-    in (Cons m . badsort . removeFirst (equals m)) xs
+sort xs = let m = minimum xs
+          in (Cons m . sort . removeFirst (equals m)) xs
+
+main = sort (Cons three (Cons one (Cons two (Cons three Nil))))
