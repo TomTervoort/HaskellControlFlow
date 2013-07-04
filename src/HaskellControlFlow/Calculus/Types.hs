@@ -25,7 +25,7 @@ data Type = BasicType BasicType
           -- | Forall Name Type (polymorphism)
 
 instance Show Type where
-    showsPrec n (BasicType k) = showsPrec n k
+    showsPrec _ (BasicType k) = showsPrec 0 k
     showsPrec _ (DataType k) = (k++)
     showsPrec _ (ListType ty)
         = ("["++)
@@ -35,13 +35,16 @@ instance Show Type where
         = ("("++)
         . (intercalate ", " (map (\t -> showsPrec 0 t "") tys) ++)
         . (")"++)
-    showsPrec n (Arrow _ lhs rhs)
-        = ((if n > 0 then "(" else "")++)
-        . showsPrec 10 lhs
-        . ((if n > 0 then ")" else "")++)
+    showsPrec _ (Arrow _ lhs@(Arrow _ _ _) rhs)
+        = ("("++)
+        . showsPrec 0 lhs
+        . (") -> "++)
+        . showsPrec 0 rhs
+    showsPrec _ (Arrow _ lhs rhs)
+        = showsPrec 0 lhs
         . (" -> "++)
         . showsPrec 0 rhs
-    showsPrec n (TyVar k) = (k++)
+    showsPrec _ (TyVar k) = (k++)
 
 -- | A few build-in types.
 data BasicType = Integer
