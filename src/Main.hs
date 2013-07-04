@@ -30,8 +30,8 @@ showAnalysis annEnv tt = case tt of
         putStr $ "Left hand side: " ++ formatTerm lhsTerm
         putStr $ "Right hand side: " ++ formatTerm rhsTerm
         
-        putStrLn $ "Left hand side type: " ++ (show $ annotation lhsTerm)  -- TODO: This still has unresolved vars!
-        putStrLn $ "Right hand side type: " ++ (show $ annotation rhsTerm) -- TODO: This still has unresolved vars!
+        putStrLn $ "Left hand side type: " ++ (show $ annotation lhsTerm)
+        putStrLn $ "Right hand side type: " ++ (show $ annotation rhsTerm)
         
         case typeAnn $ annotation lhsTerm of
             Just var ->

@@ -92,7 +92,7 @@ unify a b constraints = case (a, b) of
                       (s2, constraints1) <- unify a b constraints
                       return (s2 . s1, constraints1)
     
-    _ -> fail $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
+    _ -> fail $ traceStack "" $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
 
 -- | Unifies annotation variables with constraints.
 unifyAnnVars :: Maybe AnnVar -> Maybe AnnVar -> AnnConstraints -> AnnConstraints
@@ -242,7 +242,7 @@ algorithmW fac defs env constraints term = case term of
                          (ty3, s5, fac3, constraints3, typedAlts) <-
                              if null ps 
                              then return (annotation tt, id, fac2, constraints2, []) 
-                             else handlePatterns (annotation tt, id, fac2, constraints2) ps
+                             else handlePatterns (ty1, id, fac2, constraints2) ps
                          
                          -- Unify types of different terms.
                          (s6, constraints4) <- unify (annotation tt) ty3 constraints3
