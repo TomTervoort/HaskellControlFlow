@@ -89,19 +89,25 @@ Furthermore, we initially choose to perform a monomorphic, monovariant analysis.
 We consider a desugared form of Haskell 2010.
 
 \begin{code}
-data Term = LiteralTerm     {constant :: Literal}
+data Term = LiteralTerm     {literal :: Literal}
           | VariableTerm    {varName :: Name}
           | ApplicationTerm {lhsTerm :: Term, rhsTerm :: Term}
           | AbstractionTerm {argName :: Name, bodyTerm :: Term}
           | LetInTerm       {letTerm :: (Name, Term), inTerm :: Term}
-          | CaseTerm        {exprTerm :: Term, alts :: [(Pattern, Term)]}          
+          | CaseTerm        {exprTerm :: Term, alts :: [(Pattern, Term)]}
           | ListTerm        {terms :: [Term]}
           | TupleTerm       {terms :: [Term]}
+          | FixTerm         {fixedTerm :: Term}
 
 data Pattern = Variable Name
              | Pattern {ctorName :: Name, ctorArgs :: [Name]}
 
 type Name = String
+
+data Literal = IntegerLit Integer
+             | DoubleLit Rational
+             | StringLit String
+             | CharLit Char
 \end{code}
 
 % TODO type inference over this language
