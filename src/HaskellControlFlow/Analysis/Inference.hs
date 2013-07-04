@@ -322,8 +322,8 @@ lookupAnnNames var (allNames, substitutions) =
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term () -> DataEnv -> TyEnv -> m (Type, Term Type, TyEnv, AnnEnv)
+inferPrincipalType :: Monad m => Term () -> DataEnv -> TyEnv -> m (Type, Term Type, AnnEnv)
 inferPrincipalType term datas env = 
   do (tt, s, _, constraints) <- algorithmW initVarFactory datas env [] term
      let newEnv = M.map s env
-     return (gen newEnv $ annotation tt, tt, newEnv, solveAnnConstraints constraints)
+     return (gen newEnv $ annotation tt, replaceAnnotation s tt, solveAnnConstraints constraints)

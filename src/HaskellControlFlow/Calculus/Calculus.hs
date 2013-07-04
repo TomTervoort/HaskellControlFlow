@@ -18,7 +18,7 @@ data Term a = ConstantTerm {annotation :: a, constant :: Constant}
             | ApplicationTerm {annotation :: a, lhsTerm :: Term a, rhsTerm :: Term a}
             | AbstractionTerm {annotation :: a, argName :: Name, bodyTerm :: Term a}
             | LetInTerm {annotation :: a, letTerm :: NamedTerm a, inTerm :: Term a}
-            | CaseTerm {annotation :: a, exprTerm :: Term a, alts :: [(Pattern, Term a)]}          
+            | CaseTerm {annotation :: a, exprTerm :: Term a, alts :: [(Pattern, Term a)]}
             | ListTerm {annotation :: a, terms :: [Term a]}
             | TupleTerm {annotation :: a, terms :: [Term a]}
             | FixTerm {annotation :: a, fixedTerm :: Term a}
@@ -42,6 +42,49 @@ data Constant = IntegerConst Integer
 
 -- | Abstraction name.
 type Name = String
+
+-- | Replaces the annotations on a term.
+replaceAnnotation :: (a -> b) -> Term a -> Term b
+replaceAnnotation f t = case t of
+    ConstantTerm {annotation = ann} ->
+        ConstantTerm {annotation = f ann
+                     ,constant   = constant t}
+    
+    VariableTerm {annotation = ann} ->
+        VariableTerm {annotation = f ann
+                     ,varName    = varName t}
+    
+    ApplicationTerm {annotation = ann, lhsTerm = lhsTerm, rhsTerm = rhsTerm} ->
+        ApplicationTerm {annotation = f ann
+                        ,lhsTerm    = replaceAnnotation f lhsTerm
+                        ,rhsTerm    = replaceAnnotation f rhsTerm}
+    
+    AbstractionTerm {annotation = ann, bodyTerm = bodyTerm} ->
+        AbstractionTerm {annotation = f ann
+                        ,argName    = argName t
+                        ,bodyTerm   = replaceAnnotation f bodyTerm}
+    
+    LetInTerm {annotation = ann, letTerm = letTerm, inTerm = inTerm} ->
+        LetInTerm {annotation = f ann
+                  ,letTerm    = NamedTerm {name = name letTerm, term = replaceAnnotation f $ term letTerm}
+                  ,inTerm     = replaceAnnotation f inTerm}
+     
+    CaseTerm {annotation = ann, exprTerm = exprTerm, alts = alts} ->
+        CaseTerm {annotation = f ann
+                 ,exprTerm   = replaceAnnotation f exprTerm
+                 ,alts       = map (\(p, term) -> (p, replaceAnnotation f term)) alts}
+    
+    ListTerm {annotation = ann, terms = terms} ->
+        ListTerm {annotation = f ann
+                 ,terms      = map (replaceAnnotation f) terms}
+    
+    TupleTerm {annotation = ann, terms = terms} ->
+        TupleTerm {annotation = f ann
+                  ,terms      = map (replaceAnnotation f) terms}
+    
+    FixTerm {annotation = ann, fixedTerm = fixedTerm} ->
+        FixTerm {annotation = f ann
+                ,fixedTerm  = replaceAnnotation f fixedTerm}
 
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
 replaceVar :: Name -> Term a -> Term a -> Term a
@@ -134,6 +177,7 @@ namedTermsToLets = foldr (\n -> (LetInTerm () n .)) id
 --   recursion.
 letGroup :: [NamedTerm ()] -> Term () -> Term ()
 letGroup lhss = namedTermsToLets $ fixRecursion $ makeCallGraph lhss
+
 {-- letGroup [NamedTerm n def] t = LetInTerm (NamedTerm n def) t
 letGroup (n:ns) t = LetInTerm n $ letGroup ns t
 letGroup [] _ = error "Provide at least one named term."  --}

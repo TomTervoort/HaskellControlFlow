@@ -77,7 +77,7 @@ main = do
     
     -- Analyse it.
     let env = constructorTypes (datatypes program) initTyEnv
-    (programType, tt, _, annEnv) <- inferPrincipalType (topExpr program) (datatypes program) env
+    (programType, tt, annEnv) <- inferPrincipalType (topExpr program) (datatypes program) env
     
     -- Show main type.
     putStrLn $ "Type of the 'main' function: " ++ show programType ++ "\n"
@@ -85,12 +85,5 @@ main = do
     -- Show analysis.
     putStrLn "Result of the control flow analysis:\n"
     showAnalysis annEnv tt
-    
-    -- putStrLn "\n"
-    -- putStrLn $ show finalEnv
-    -- putStrLn "\n"
-    -- putStrLn $ show annEnv
-    -- putStrLn "\n"
-    -- putStrLn $ show tt
     
     return ()
