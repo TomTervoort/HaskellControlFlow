@@ -11,8 +11,6 @@ import qualified Data.Map as M
 import Control.Arrow
 import Control.Monad
 
-import Debug.Trace
-
 -- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
 
@@ -108,7 +106,8 @@ constantType c = case c of
     StringConst  _ -> ListType (BasicType Char)
 
 -- | Implements algorithm W for type inference.
-algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term () -> m (Term Type, TySubst, VarFactory, AnnConstraints)
+algorithmW :: Monad m => VarFactory -> DataEnv -> TyEnv -> AnnConstraints -> Term a ->
+    m (Term Type, TySubst, VarFactory, AnnConstraints)
 algorithmW fac defs env constraints term = case term of
     ConstantTerm _ c ->
          return (ConstantTerm {annotation = (constantType c), constant = constant term}, id, fac, constraints)
@@ -352,7 +351,7 @@ constructorTypes fac dataEnv env constraints = do
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term () -> DataEnv -> m (Type, Term Type, AnnEnv)
+inferPrincipalType :: Monad m => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
 inferPrincipalType term dataTypes = do
     let constraints = []
     let fac         = initVarFactory
