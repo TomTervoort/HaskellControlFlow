@@ -33,8 +33,9 @@ parseHaskellModule (HsModule _ _ _ _ declarations) =
 -- | Parses a data or function declaration.
 parseDeclaration :: HsDecl -> [Either DataDef (NamedTerm ())]
 parseDeclaration declaration = case declaration of
-    HsTypeDecl _ _ _ _ -> error "Type synonyms not supported."
-    HsTypeSig _ _ _    -> [] -- We ignore type signatures and infer everything ourselves.
+    HsTypeDecl _ _ _ _  -> [] -- Just skip them.
+    HsInfixDecl _ _ _ _ -> [] -- Parser will take care of this.
+    HsTypeSig _ _ _     -> [] -- We ignore type signatures and infer everything ourselves.
     
     HsDataDecl _ _ name params constructors _
      | not $ null params -> error "Parametrized data type declarations are not supported."
@@ -49,7 +50,6 @@ parseDeclaration declaration = case declaration of
     -- Unsuported features.
     HsNewTypeDecl _ _ _ _ _ _   -> error "New type notation not supported."
     HsClassDecl _ _ _ _ _       -> error "Class notation not supported."
-    HsInfixDecl _ _ _ _         -> error "Infix notation not supported."
     HsInstDecl _ _ _ _ _        -> error "Instance notation not supported."
     HsDefaultDecl _ _           -> error "Default notation not supported."
     HsForeignImport _ _ _ _ _ _ -> error "Foreign import not supported."

@@ -92,7 +92,7 @@ unify a b constraints = case (a, b) of
                       (s2, constraints1) <- unify a b constraints
                       return (s2 . s1, constraints1)
     
-    _ -> fail $ traceStack "" $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
+    _ -> fail $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
 
 -- | Unifies annotation variables with constraints.
 unifyAnnVars :: Maybe AnnVar -> Maybe AnnVar -> AnnConstraints -> AnnConstraints
@@ -220,7 +220,9 @@ algorithmW fac defs env constraints term = case term of
             handlePatterns (ty1, s1, fac1, constraints) ((p@(Variable name), pTerm):_ ) = do
                 -- TODO: Put name in environment.
                 
-                (tt, s2, fac2, constraints1) <- algorithmW fac1 defs (M.map s1 env) constraints pTerm
+                let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env
+                
+                (tt, s2, fac2, constraints1) <- algorithmW fac1 defs env1 constraints pTerm
                 
                 return (annotation tt, s2 . s1, fac2, constraints1, [(p, tt)])
 
@@ -238,7 +240,9 @@ algorithmW fac defs env constraints term = case term of
                          -- Infer term.
                          let sx = s3 . s2 . s1
                          
-                         (tt, s4, fac2, constraints2) <- algorithmW fac1 defs (M.map sx env1) constraints1 pTerm
+                         let env2 = M.map sx env1
+                         
+                         (tt, s4, fac2, constraints2) <- algorithmW fac1 defs env2 constraints1 pTerm
                          (ty3, s5, fac3, constraints3, typedAlts) <-
                              if null ps 
                              then return (annotation tt, id, fac2, constraints2, []) 
