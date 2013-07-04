@@ -1,4 +1,4 @@
-module Sort(main) where
+module Sort where
 
 data Ordering = LT | EQ | GT
 
@@ -24,11 +24,11 @@ compare x y = case x of
         Zero   -> GT
         Succ m -> compare n m
 
-listFold n c l = case l of
-    Nil         -> n
-    (Cons v vs) -> c v (listFold n c vs)
+foldl f init list = case list of
+    Nil         -> init
+    (Cons x xs) -> f x (foldl f init xs)
 
-minimum = listFold infinite meet
+minimum = foldl meet infinite
   where
     meet x y = case compare x y of
         LT -> x

@@ -11,7 +11,7 @@ import Data.List
 
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
 --   expression (all functions are nested let expressions) and a collection of defined data types.
-data HaskellProgram a = HaskellProgram {datatypes :: DataEnv, topExpr :: Term a}
+data HaskellProgram a = HaskellProgram {dataTypes :: DataEnv, topExpr :: Term a}
 
 -- | A Haskell type. May also contain function type annotations or type variables.
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
@@ -74,6 +74,7 @@ typeAnn _               = Nothing
 -- | Gives the type with a certain name. Either returns a basic type if the String equals "Integer",
 --   "Char" or "Double"; or considers the type to be a custom data type.
 typeFromName :: String -> Type
+typeFromName "Int"     = BasicType Integer
 typeFromName "Integer" = BasicType Integer
 typeFromName "Char"    = BasicType Char
 typeFromName "Double"  = BasicType Double

@@ -34,8 +34,12 @@ showAnalysis annEnv tt = case tt of
         putStrLn $ "Right hand side type: " ++ (show $ annotation rhsTerm)
         
         case typeAnn $ annotation lhsTerm of
-            Just var ->
-                putStrLn $ "Possible named functions: " ++ (intercalate ", " $ lookupAnnNames var annEnv)
+            Just var -> do
+                let annNames = lookupAnnNames var annEnv
+                
+                if null annNames
+                then putStrLn "Possible named functions: none"
+                else putStrLn $ "Possible named functions: " ++ (intercalate ", " annNames)
             Nothing ->
                 putStrLn "Possible named functions: none"
         
@@ -76,8 +80,7 @@ main = do
     putStrLn $ formatTerm (topExpr program)
     
     -- Analyse it.
-    let env = constructorTypes (datatypes program) initTyEnv
-    (programType, tt, annEnv) <- inferPrincipalType (topExpr program) (datatypes program) env
+    (programType, tt, annEnv) <- inferPrincipalType (topExpr program) (dataTypes program)
     
     -- Show main type.
     putStrLn $ "Type of the 'main' function: " ++ show programType ++ "\n"

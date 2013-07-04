@@ -1,4 +1,4 @@
-
+module Fac where
 
 data Nat = Zero | Succ Nat
 

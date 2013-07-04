@@ -284,33 +284,36 @@ solveAnnConstraints (x:xs) = case x of
                 Nothing       -> (M.insert var (S.insert name S.empty)  allNames, substitutions)
     
     SubstituteConstraint first second ->
-        let (allNames, substitutions) = solveAnnConstraints xs
-        in case M.lookup (cannonicalVarName first substitutions) allNames of
-            Just _  -> insertSubsitution second first allNames substitutions
-            Nothing -> insertSubsitution first second allNames substitutions
-        where
+        let
+            (allNames, substitutions) = solveAnnConstraints xs
+            realFirst  = cannonicalVarName first substitutions
+            realSecond = cannonicalVarName second substitutions
+            
             insertSubsitution first second allNames substitutions =
-                let
-                    realSecond = cannonicalVarName second substitutions
-                in
-                    case M.lookup first substitutions of
-                        Just existing ->
-                            -- Let's merge these two.
-                            let
-                                firstNames       = M.findWithDefault S.empty existing allNames
-                                secondNames      = M.findWithDefault S.empty realSecond allNames
-                                unionNames       = firstNames `S.union` secondNames
-                                newAllNames      = M.delete realSecond $ M.insert existing unionNames allNames
-                                newSubstitutions = M.insert realSecond existing substitutions
-                            in
-                                (newAllNames, newSubstitutions)
-                        Nothing ->
-                            -- Insert a new one.
-                            (allNames, M.insert first realSecond substitutions)
+                case M.lookup realFirst substitutions of
+                    Just existing ->
+                        -- Let's merge these two.
+                        let
+                            firstNames       = M.findWithDefault S.empty existing allNames
+                            secondNames      = M.findWithDefault S.empty realSecond allNames
+                            unionNames       = firstNames `S.union` secondNames
+                            newAllNames      = M.delete realSecond $ M.insert existing unionNames allNames
+                            newSubstitutions = M.insert realSecond existing substitutions
+                        in
+                            (newAllNames, newSubstitutions)
+                    Nothing ->
+                        -- Insert a new one.
+                        (allNames, M.insert first realSecond substitutions)
             
             cannonicalVarName var substitutions = case M.lookup var substitutions of
-                Just substitution -> substitution
+                Just substitution -> cannonicalVarName substitution substitutions
                 Nothing           -> var
+        in 
+            if realFirst == realSecond
+            then (allNames, substitutions)
+            else case M.lookup realFirst allNames of
+                Just _  -> insertSubsitution second first allNames substitutions
+                Nothing -> insertSubsitution first second allNames substitutions
 
 -- | Looks up annotation names in the solved annotations.
 lookupAnnNames :: AnnVar -> AnnEnv -> [Name]
@@ -320,14 +323,18 @@ lookupAnnNames var (allNames, substitutions) =
         Nothing       -> []
     where
         cannonicalVarName var substitutions = case M.lookup var substitutions of
-            Just substitution -> substitution
+            Just substitution -> cannonicalVarName substitution substitutions
             Nothing           -> var
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: Monad m => Term () -> DataEnv -> TyEnv -> m (Type, Term Type, AnnEnv)
-inferPrincipalType term datas env = 
-  do (tt, s, _, constraints) <- algorithmW initVarFactory datas env [] term
-     let newEnv = M.map s env
-     return (gen newEnv $ annotation tt, replaceAnnotation s tt, solveAnnConstraints constraints)
+inferPrincipalType :: Monad m => Term () -> DataEnv -> m (Type, Term Type, AnnEnv)
+inferPrincipalType term datas = do
+    let env = constructorTypes datas initTyEnv
+    
+    (tt, s, _, constraints) <- algorithmW initVarFactory datas env [] term
+    
+    let newEnv = M.map s env
+    
+    return (gen newEnv $ annotation tt, replaceAnnotation s tt, solveAnnConstraints constraints)

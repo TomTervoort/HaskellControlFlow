@@ -27,8 +27,8 @@ parseHaskellFile filename = do
 parseHaskellModule :: HsModule -> HaskellProgram ()
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     let (defs, lets) = partitionEithers $ concatMap parseDeclaration declarations
-     in HaskellProgram {datatypes = foldr addDataDef initEnv defs,
-                        topExpr = letGroup lets (VariableTerm {varName = "main"})}
+     in HaskellProgram {dataTypes = foldr addDataDef initEnv defs,
+                        topExpr   = letGroup lets (VariableTerm {varName = "main"})}
 
 -- | Parses a data or function declaration.
 parseDeclaration :: HsDecl -> [Either DataDef (NamedTerm ())]

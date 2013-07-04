@@ -1,3 +1,5 @@
+module Ternary where
+
 data Trit = Neg | Zer | Pos
 
 add Zer x = (Zer, x)
