@@ -272,46 +272,50 @@ solveAnnConstraints :: AnnConstraints -> AnnEnv
 solveAnnConstraints []     = (M.empty, M.empty)
 solveAnnConstraints (x:xs) = case x of
     InclusionConstraint var name ->
-        let (allNames, substitutions) = solveAnnConstraints xs
-        in case M.lookup var substitutions of
-            Just subsitute -> insertName subsitute name allNames substitutions
-            Nothing        -> insertName var       name allNames substitutions
-        where
-            insertName var name allNames substitutions = case M.lookup var allNames of
-                Just varNames -> (M.insert var (S.insert name varNames) allNames, substitutions)
-                Nothing       -> (M.insert var (S.insert name S.empty)  allNames, substitutions)
+        let
+            (allNames, substitutions) = solveAnnConstraints xs
+            
+            realVar = cannonicalVarName var substitutions
+            
+        in case M.lookup realVar allNames of
+            Just varNames -> (M.insert realVar (S.insert name varNames) allNames, substitutions)
+            Nothing       -> (M.insert realVar (S.insert name S.empty)  allNames, substitutions)
     
     SubstituteConstraint first second ->
         let
             (allNames, substitutions) = solveAnnConstraints xs
-            realFirst  = cannonicalVarName first substitutions
-            realSecond = cannonicalVarName second substitutions
             
-            insertSubsitution first second allNames substitutions =
-                case M.lookup realFirst substitutions of
-                    Just existing ->
-                        -- Let's merge these two.
-                        let
-                            firstNames       = M.findWithDefault S.empty existing allNames
-                            secondNames      = M.findWithDefault S.empty realSecond allNames
-                            unionNames       = firstNames `S.union` secondNames
-                            newAllNames      = M.delete realSecond $ M.insert existing unionNames allNames
-                            newSubstitutions = M.insert realSecond existing substitutions
-                        in
-                            (newAllNames, newSubstitutions)
-                    Nothing ->
-                        -- Insert a new one.
-                        (allNames, M.insert first realSecond substitutions)
+            insertSubsitution first second = 
+                if realSecond == realFirst
+                then (allNames, substitutions)
+                else case M.lookup first substitutions of
+                        Just _ ->
+                            -- Let's merge these two.
+                            let
+                                firstNames       = M.findWithDefault S.empty realFirst allNames
+                                secondNames      = M.findWithDefault S.empty realSecond allNames
+                                unionNames       = firstNames `S.union` secondNames
+                                newAllNames      = M.insert realFirst unionNames $ M.delete realSecond allNames
+                                newSubstitutions = M.insert realSecond realFirst substitutions
+                            in
+                                (newAllNames, newSubstitutions)
+                        Nothing ->
+                            -- Insert a new one.
+                            (allNames, M.insert first realSecond substitutions)
+                where
+                    realFirst  = cannonicalVarName first substitutions
+                    realSecond = cannonicalVarName second substitutions
             
-            cannonicalVarName var substitutions = case M.lookup var substitutions of
-                Just substitution -> cannonicalVarName substitution substitutions
-                Nothing           -> var
         in 
-            if realFirst == realSecond
-            then (allNames, substitutions)
-            else case M.lookup realFirst allNames of
-                Just _  -> insertSubsitution second first allNames substitutions
-                Nothing -> insertSubsitution first second allNames substitutions
+            case M.lookup (cannonicalVarName first substitutions) allNames of
+                Just _  -> insertSubsitution second first
+                Nothing -> insertSubsitution first second
+
+-- | Normalizes a variable name.
+cannonicalVarName :: AnnVar -> M.Map AnnVar AnnVar -> AnnVar
+cannonicalVarName var substitutions = case M.lookup var substitutions of
+    Just substitution -> cannonicalVarName substitution substitutions
+    Nothing           -> var
 
 -- | Looks up annotation names in the solved annotations.
 lookupAnnNames :: AnnVar -> AnnEnv -> [Name]
@@ -319,10 +323,6 @@ lookupAnnNames var (allNames, substitutions) =
     case M.lookup (cannonicalVarName var substitutions) allNames of
         Just namesSet -> S.toList namesSet
         Nothing       -> []
-    where
-        cannonicalVarName var substitutions = case M.lookup var substitutions of
-            Just substitution -> cannonicalVarName substitution substitutions
-            Nothing           -> var
 
 -- | Updates a type environment with the type signatures for constructors used within a DataEnv so 
 --   those can be treated as functions.
