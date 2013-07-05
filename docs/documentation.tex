@@ -31,6 +31,12 @@
                {|}{{$\mid$}}1               
     }
 
+\newcommand{\hsterm}[1]{%
+    \setlength{\fboxsep}{3pt}%
+    \setlength{\fboxrule}{0.2pt}%
+    \fbox{\texttt{#1}}}
+\renewcommand{\vec}[1]{\overline{#1}}
+
 \title{Control Flow Analysis of monomorphic Haskell}
 \author{Stijn van Drongelen {\tiny(3117537)},
         Tom Tervoort {\tiny(3470784)},
@@ -104,16 +110,97 @@ data Pattern = Variable Name
 
 type Name = String
 
-data Literal = IntegerLit Integer
-             | DoubleLit Rational
+data Literal = IntegralLit Integer
+             | FractionalLit Rational
              | StringLit String
              | CharLit Char
 \end{code}
 
-% TODO type inference over this language
+\subsection{Type rules}
+The type universe is as follows:
+
+\begin{code}
+data Type = BasicType BasicType
+          | DataType Name
+          | ListType Type
+          | TupleType [Type]
+          | Arrow (Maybe AnnVar) Type Type
+          | TyVar Name
+
+data BasicType = Integer
+               | Char
+               | Double
+
+type AnnVar = Name
+\end{code}
+
+Types of literals:
+\begin{align*}
+\infer[LitIntegral]%
+    {\Gamma \vdash \hsterm{LiteralTerm (IntegerLit \_)} : \hsterm{BasicType Integer}}%
+    {}\\
+\infer[LitChar]%
+    {\Gamma \vdash \hsterm{LiteralTerm (CharLit \_)} : \hsterm{BasicType Char}}%
+    {}\\
+\infer[LitString]%
+    {\Gamma \vdash \hsterm{LiteralTerm (StringLit \_)} : \hsterm{ListType (BasicType Char)}}%
+    {}\\
+\infer[LitFractional]%
+    {\Gamma \vdash \hsterm{LiteralTerm (FractionalLit \_)} : \hsterm{BasicType Double}}%
+    {}\\
+\end{align*}
+
+Hardwired type constructors:
+\begin{align*}
+\infer[ListIntro]%
+    {\Gamma \vdash \hsterm{ListTerm \ensuremath{\vec{e}}} : \hsterm{ListType \ensuremath{a}}}%
+    {\forall e \in \vec{e}. \Gamma \vdash e : a}\\
+\infer[TupleIntro]%
+    {\Gamma \vdash \hsterm{TupleTerm \ensuremath{\vec{e}}} : \hsterm{TupleType \ensuremath{\vec{a}}}}%
+    {\forall (e,a) \in \vec{e}\times\vec{a}. \Gamma \vdash e : a}
+\end{align*}
+
+Declaration:
+\begin{align*}
+\infer[LetIn]%
+    {\Gamma \vdash \hsterm{LetInTerm (\ensuremath{x}, \ensuremath{e_1}) \ensuremath{e_0}} : \tau_0}%
+    {\Gamma \vdash e_1 : \tau_1 \qquad \Gamma [x : \tau_1] \vdash e_0 : \tau_0}
+\end{align*}
+
+Abstraction and application:
+\begin{align*}
+\infer[FunIntro]%
+    {\Gamma \vdash \hsterm{AbstractionTerm \ensuremath{x} \ensuremath{e}} : \hsterm{Arrow \_ \ensuremath{\tau_x} \ensuremath{\tau_e}}}%
+    {\Gamma [x : \tau_x] \vdash e : \tau_e}\\
+\infer[FunElim]%
+    {\Gamma \vdash \hsterm{ApplicationTerm \ensuremath{e_0} \ensuremath{e_1}} : \tau_2}%
+    {\Gamma \vdash e_0 : \hsterm{Arrow \_ \ensuremath{\tau_1} \ensuremath{\tau_2}} \qquad \Gamma \vdash e_1 : \tau_1}
+\end{align*}
+
+Fixpoint:
+\begin{align*}
+\infer[FunFix]%
+    {\Gamma \vdash \hsterm{FixTerm \ensuremath{e}} : \ensuremath{a}}%
+    {\Gamma \vdash \ensuremath{e} : \hsterm{Arrow \_ (Arrow \_ \ensuremath{a} \ensuremath{a}) \ensuremath{a}}}
+\end{align*}
+
+Case matching:
+\begin{align*}
+\infer[DataElim]%
+    {\Gamma \vdash \hsterm{CaseTerm \ensuremath{s} \ensuremath{\vec{m}}} : \tau_e}%
+    {\Gamma \vdash s : \tau_s \qquad
+    \forall \hsterm{(\ensuremath{p}, \ensuremath{e})} \in \vec{m}.\left(
+        \Gamma \vdash_\textsc{Patt} p : \tau_s \& b \qquad
+        \Gamma; b \vdash e : \tau_e
+    \right)}
+\end{align*}
+
+\subsubsection{Pattern typing}
+\subsubsection{Administrative rules}
+% TODO rules regarding \Gamma
+% TODO rules regarding subtyping/whatever
 
 \section{The analysis}
-
 % TODO leveraging type inference to perform CFA
 
 \section{Implementation}
