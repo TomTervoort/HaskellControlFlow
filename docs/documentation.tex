@@ -37,6 +37,8 @@
     \fbox{\texttt{#1}}}
 \renewcommand{\vec}[1]{\overline{#1}}
 
+\newcommand{\algow}{algorithm~$\mathcal{W}$}
+
 \DeclareMathOperator{\zip}{zip}
 \DeclareMathOperator{\curry}{curry}
 
@@ -51,7 +53,6 @@
 \maketitle
 
 \section{Introduction}
-\section{Goal}
 The goal of this project is to implement CFA on a small subset of Haskell.
 We use \texttt{haskell-src}, so we can only deal with Haskell 98 to begin with,
 but that's still a language with more features than we can handle.
@@ -72,6 +73,8 @@ but that's still a language with more features than we can handle.
     Literals (at least the numeric ones) are polymorphic in Haskell 98, with
     a type class restriction. Since we can't use type classes, we make literals
     monomorphic instead.
+\item[Monomorphic types]
+    Our subset of Haskell is not polymorphic.
 \item[No do-notation or list comprehensions]
     These constructs are pure syntactic sugar. We don't use them in our examples,
     so we don't bother to implement a desugaring for them.
@@ -111,7 +114,8 @@ fixed point operator (\texttt{FixTerm}), which serves the same purpose as
 \texttt{fix} from \texttt{Data.Function}.
 
 Also note the absence of data type definitions. They are supported in our
-language, but 
+language, but are parsed and treated separately (the constructors are
+inserted immediately into the environment).
 
 \subsection{Type rules}
 The type universe of our language is defined by the following data types:
@@ -130,6 +134,16 @@ data BasicType = Integer
 
 type AnnVar = Name
 \end{code}
+
+We will ignore the \texttt{Maybe AnnVar} field of the \texttt{Arrow} constructor
+for now.
+
+Note the lack of a \texttt{Forall} (or System F-style \texttt{TyLambda})
+construct: we don't support polymorphism, and the \texttt{TyVar}s are
+only there to aid \algow{}.
+
+For sake of space, we omit the rules for defining the environment and
+type instantiation.
 
 \subsubsection{Type rules for terms}
 The rules for the hardwired types (literals, lists, and tuples) are axioms
@@ -205,39 +219,81 @@ where $p$ is the pattern, $\tau$ is the type of the pattern, and $b$ is
 a sequence of mappings from variables (as bound in $p$) to types (as implied
 by $p$).
 
-\begin{align*}
+\begin{equation*}
 \infer[VarPatt]%
     {\Gamma \vdash_\textsc{Patt} \hsterm{Variable \ensuremath{x}} : \tau \& [x : \tau]}%
     {}
-\end{align*}
+\end{equation*}
 
-\begin{align*}
+\begin{equation*}
 \infer[ConPatt]%
     {\Gamma \vdash_\textsc{Patt} \hsterm{Patt \ensuremath{c} \ensuremath{\vec{p}}} : \tau_t \& \bigcup \vec{b}}%
     {\Gamma \vdash c : \tau_c
     \qquad \forall (p,\tau_p,b) \in \zip(\vec{p}, \vec{\tau_p}, \vec{b}).
         \Gamma \vdash_\textsc{Patt} p : \tau_p \& b
     \qquad \text{$\vec{b}$ pairwise disjoint}}
-\end{align*}
+\end{equation*}
 where $(\vec{\tau_p}, \tau_t) = \curry \tau_c$.
 
-
-\subsubsection{Administrative rules}
-% TODO rules regarding \Gamma
-% TODO rules regarding subtyping/whatever
-
-\section{The analysis}
-% TODO leveraging type inference to perform CFA
-
 \section{Implementation}
-\section{Results}
+\subsection{Parsing and desugaring}
+After reading the file and parsing it with \texttt{haskell-src}, our
+implementation translates the resulting code into our limited AST type.
+Part of this phase involves determining the strongly connected components
+in the `dependency' graph of the functions, so that we can rewrite mutually
+recursive functions in terms of the fixed point combinator.
+
+If there's anything we encounter that we can't support, we throw an error.
+
+\subsection{Type inference and constraint generation}
+We then apply a very straightforward implementation of \algow{} to the
+desugared program.
+
+Remember the \texttt{Maybe AnnVar} field in the \texttt{Arrow} constructor;
+during type inference, we plug fresh variables into these fields, and wherever
+necessary, we record constraints about these variables while executing \algow{}.
+The constraints are of the form $\phi \equiv \phi'$ (called
+\texttt{SubstitutionConstraint} in our implementation) and $n \in \phi$
+(\texttt{InclusionConstraint}).
+
+We found that formulating constraints only made sense when declaring new
+functions. As such, we only do this when we encounter a \texttt{LetInTerm}
+node during type inference. When we bind an expression to a name $n$,
+and we know that the expression is a function with annotation $\phi$,
+we can add a constraint $n \in \phi$.
+
+\subsection{Constraint solving}
+After \algow{} is done, we solve the constraints on the annotation variables
+separately.
+
+\subsection{Output}
+Finally, we print the following information:
+\begin{itemize}
+\item The desugared form of the input program.
+\item The inferred type of the \texttt{main} function.
+\item For every function application, the result of the CFA on the function.
+    Specifically, only named functions are listed.
+\end{itemize}
+
 \section{Discussion}
+When executing our CFA, you may notice that a lot of applications don't involve
+function calls of directly named functions. This significantly reduces the
+usefulness of this CFA; even information like ``an inner function of $f$''
+might be very useful to the consumer of the analysis.
+
+A few aspects of our implementation might be considered warts:
 \begin{itemize}
 \item
     We treat lists and tuples as special types. A different approach might
-    have resulted in less redundant code.
+    have resulted in less redundant code (and get rid of two type rules).
+\item
+    We could have used a much nicer way to introduce fresh variables in our
+    implementation. At the time, implementing a \texttt{FreshT} monad
+    transformer seemed too much hassle.
+\item
+    We might have been able to use a more applicative style of programming
+    if we had separated type constraint generation and solving. However,
+    we already had a straightforward implementation of \algow{} available.
 \end{itemize}
-
-\section{Conclusion}
 
 \end{document}
