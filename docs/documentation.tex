@@ -37,6 +37,9 @@
     \fbox{\texttt{#1}}}
 \renewcommand{\vec}[1]{\overline{#1}}
 
+\DeclareMathOperator{\zip}{zip}
+\DeclareMathOperator{\curry}{curry}
+
 \title{Control Flow Analysis of monomorphic Haskell}
 \author{Stijn van Drongelen {\tiny(3117537)},
         Tom Tervoort {\tiny(3470784)},
@@ -73,12 +76,14 @@ but that's still a language with more features than we can handle.
     These constructs are pure syntactic sugar. We don't use them in our examples,
     so we don't bother to implement a desugaring for them.
 \item[No modularity]
-    Since our examples fit in a single module, we don't implement module imports
-    or exports (let alone the FFI).
+    Since our examples each fit in a single module, we don't implement module
+    imports or exports (let alone the FFI).
 \end{description}
 
 \section{The language}
-We consider a desugared form of Haskell 98.
+Every module is assumed to define a function \texttt{main}. Under this
+assumption, we build a \texttt{Term} which expresses the value of this
+function:
 
 \begin{code}
 data Term = LiteralTerm     {literal :: Literal}
@@ -91,19 +96,25 @@ data Term = LiteralTerm     {literal :: Literal}
           | TupleTerm       {terms :: [Term]}
           | FixTerm         {fixedTerm :: Term}
 
-data Pattern = Variable Name
-             | Pattern {ctorName :: Name, ctorArgs :: [Name]}
-
-type Name = String
-
 data Literal = IntegralLit Integer
              | FractionalLit Rational
              | StringLit String
              | CharLit Char
+
+data Pattern = Variable Name
+             | Pattern {ctorName :: Name, ctorArgs :: [Name]}
 \end{code}
 
+Note that, even though \texttt{LetInTerm} is much more simplistic than
+Haskell's let-bindings, it is sufficient due to the inclusion of a least
+fixed point operator (\texttt{FixTerm}), which serves the same purpose as
+\texttt{fix} from \texttt{Data.Function}.
+
+Also note the absence of data type definitions. They are supported in our
+language, but 
+
 \subsection{Type rules}
-The type universe is as follows:
+The type universe of our language is defined by the following data types:
 
 \begin{code}
 data Type = BasicType BasicType
@@ -120,68 +131,97 @@ data BasicType = Integer
 type AnnVar = Name
 \end{code}
 
-Types of literals:
-\begin{align*}
+\subsubsection{Type rules for terms}
+The rules for the hardwired types (literals, lists, and tuples) are axioms
+and simple recursive rules:
+\begin{equation*}
 \infer[LitIntegral]%
     {\Gamma \vdash \hsterm{LiteralTerm (IntegerLit \_)} : \hsterm{BasicType Integer}}%
-    {}\\
+    {}
+\end{equation*}\begin{equation*}
 \infer[LitChar]%
     {\Gamma \vdash \hsterm{LiteralTerm (CharLit \_)} : \hsterm{BasicType Char}}%
-    {}\\
+    {}
+\end{equation*}\begin{equation*}
 \infer[LitString]%
     {\Gamma \vdash \hsterm{LiteralTerm (StringLit \_)} : \hsterm{ListType (BasicType Char)}}%
-    {}\\
+    {}
+\end{equation*}\begin{equation*}
 \infer[LitFractional]%
     {\Gamma \vdash \hsterm{LiteralTerm (FractionalLit \_)} : \hsterm{BasicType Double}}%
-    {}\\
-\end{align*}
-
-Hardwired type constructors:
-\begin{align*}
+    {}
+\end{equation*}\begin{equation*}
 \infer[ListIntro]%
     {\Gamma \vdash \hsterm{ListTerm \ensuremath{\vec{e}}} : \hsterm{ListType \ensuremath{a}}}%
-    {\forall e \in \vec{e}. \Gamma \vdash e : a}\\
+    {\forall e \in \vec{e}. \Gamma \vdash e : a}
+\end{equation*}\begin{equation*}
 \infer[TupleIntro]%
     {\Gamma \vdash \hsterm{TupleTerm \ensuremath{\vec{e}}} : \hsterm{TupleType \ensuremath{\vec{a}}}}%
-    {\forall (e,a) \in \vec{e}\times\vec{a}. \Gamma \vdash e : a}
-\end{align*}
+    {\forall (e,a) \in \zip(\vec{e},\vec{a}). \Gamma \vdash e : a}
+\end{equation*}
 
-Declaration:
+Abstraction, application, and the fixed point combinator:
+\begin{equation*}
+\infer[FunIntro]%
+    {\Gamma \vdash \hsterm{AbstractionTerm \ensuremath{x} \ensuremath{e}} : \hsterm{Arrow \_ \ensuremath{\tau_x} \ensuremath{\tau_e}}}%
+    {\Gamma [x : \tau_x] \vdash e : \tau_e}%
+\end{equation*}\begin{equation*}
+\infer[FunElim]%
+    {\Gamma \vdash \hsterm{ApplicationTerm \ensuremath{e_0} \ensuremath{e_1}} : \tau_2}%
+    {\Gamma \vdash e_0 : \hsterm{Arrow \_ \ensuremath{\tau_1} \ensuremath{\tau_2}} \qquad \Gamma \vdash e_1 : \tau_1}%
+\end{equation*}\begin{equation*}
+\infer[FunFix]%
+    {\Gamma \vdash \hsterm{FixTerm \ensuremath{e}} : \ensuremath{a}}%
+    {\Gamma \vdash \ensuremath{e} : \hsterm{Arrow \_ (Arrow \_ \ensuremath{a} \ensuremath{a}) \ensuremath{a}}}
+\end{equation*}
+
+Declarations:
 \begin{align*}
 \infer[LetIn]%
     {\Gamma \vdash \hsterm{LetInTerm (\ensuremath{x}, \ensuremath{e_1}) \ensuremath{e_0}} : \tau_0}%
     {\Gamma \vdash e_1 : \tau_1 \qquad \Gamma [x : \tau_1] \vdash e_0 : \tau_0}
 \end{align*}
 
-Abstraction and application:
-\begin{align*}
-\infer[FunIntro]%
-    {\Gamma \vdash \hsterm{AbstractionTerm \ensuremath{x} \ensuremath{e}} : \hsterm{Arrow \_ \ensuremath{\tau_x} \ensuremath{\tau_e}}}%
-    {\Gamma [x : \tau_x] \vdash e : \tau_e}\\
-\infer[FunElim]%
-    {\Gamma \vdash \hsterm{ApplicationTerm \ensuremath{e_0} \ensuremath{e_1}} : \tau_2}%
-    {\Gamma \vdash e_0 : \hsterm{Arrow \_ \ensuremath{\tau_1} \ensuremath{\tau_2}} \qquad \Gamma \vdash e_1 : \tau_1}
-\end{align*}
-
-Fixpoint:
-\begin{align*}
-\infer[FunFix]%
-    {\Gamma \vdash \hsterm{FixTerm \ensuremath{e}} : \ensuremath{a}}%
-    {\Gamma \vdash \ensuremath{e} : \hsterm{Arrow \_ (Arrow \_ \ensuremath{a} \ensuremath{a}) \ensuremath{a}}}
-\end{align*}
-
 Case matching:
 \begin{align*}
 \infer[DataElim]%
     {\Gamma \vdash \hsterm{CaseTerm \ensuremath{s} \ensuremath{\vec{m}}} : \tau_e}%
-    {\Gamma \vdash s : \tau_s \qquad
+    {\Gamma \vdash s : \tau_s
+    \qquad
     \forall \hsterm{(\ensuremath{p}, \ensuremath{e})} \in \vec{m}.\left(
         \Gamma \vdash_\textsc{Patt} p : \tau_s \& b \qquad
         \Gamma; b \vdash e : \tau_e
     \right)}
 \end{align*}
 
-\subsubsection{Pattern typing}
+\subsubsection{Type rules for patterns}
+For patterns, we need slightly different judgements. Patterns don't just have
+a type, but they also bind variables, for which the type should might be known.
+As seen in the \textit{DataElim} rule, pattern type judgements take the form
+\begin{equation*}
+    \Gamma \vdash_\textsc{Patt} p : \tau \& b,
+\end{equation*}
+where $p$ is the pattern, $\tau$ is the type of the pattern, and $b$ is
+a sequence of mappings from variables (as bound in $p$) to types (as implied
+by $p$).
+
+\begin{align*}
+\infer[VarPatt]%
+    {\Gamma \vdash_\textsc{Patt} \hsterm{Variable \ensuremath{x}} : \tau \& [x : \tau]}%
+    {}
+\end{align*}
+
+\begin{align*}
+\infer[ConPatt]%
+    {\Gamma \vdash_\textsc{Patt} \hsterm{Patt \ensuremath{c} \ensuremath{\vec{p}}} : \tau_t \& \bigcup \vec{b}}%
+    {\Gamma \vdash c : \tau_c
+    \qquad \forall (p,\tau_p,b) \in \zip(\vec{p}, \vec{\tau_p}, \vec{b}).
+        \Gamma \vdash_\textsc{Patt} p : \tau_p \& b
+    \qquad \text{$\vec{b}$ pairwise disjoint}}
+\end{align*}
+where $(\vec{\tau_p}, \tau_t) = \curry \tau_c$.
+
+
 \subsubsection{Administrative rules}
 % TODO rules regarding \Gamma
 % TODO rules regarding subtyping/whatever
