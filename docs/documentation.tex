@@ -49,50 +49,36 @@
 
 \section{Introduction}
 \section{Goal}
-% TODO
-
-To implement CFA on a subset of Haskell. Since we use \texttt{haskell-src} to
-parse, this is already a huge scope limiting factor. We further narrow it
-down to mainly just functions and data types. In other words, we don't
-support:
+The goal of this project is to implement CFA on a small subset of Haskell.
+We use \texttt{haskell-src}, so we can only deal with Haskell 98 to begin with,
+but that's still a language with more features than we can handle.
 
 \begin{description}
-\item[Recursive let-bindings]
-    TODO
-\item[Type signatures]
-    Although type signatures shouldn't be too hard to support, we choose
-    not to do this. The extra code required to connect a type signature to
-    the corresponding binding is not worth it, given that the other restrictions
-    on our subset make type inference decidable.
-\item[Guards]
-    Having to deal with guards makes the process of simplifying \texttt{case}
-    constructs very hard. We choose not to support them.
-\item[Type classes]
-    Type classes require a lot of extra work in the type inference algorithm.
-\item[Literals]
-    Numeric literals (and with certain extensions, \texttt{String} as well)
-    are polymorphic with a type class restriction. Since we don't support type
-    classes, we can't support literals.
-\item[Do-notation]
-    The \texttt{do}-notation desugars to the use of operators from the \texttt{Monad}
-    type class, and we can't support them.
-\item[List comprehensions]
-    List comprehensions can be seen as limited forms of the \texttt{do}-notation.
-    We could support them, but since not much more interesting than other
-    features of the language, we choose not to.
-\item [Modules (and imports)]
-    Most examples of control flow analysis fit in a single module. Although
-    analysis beyond module boundaries might be interesting, we simply don't
-    have the time to implement proper support for modules.
-\item [Foreign function interface]
-    Supporting the FFI is even harder than supporting imports. We simply don't
-    do this.
+\item[No guards]
+    Having to deal with guards makes processing \texttt{case} constructs very
+    hard. We choose not to support them, and as a consequence, we also don't
+    use them in our examples.
+\item[No type classes]
+    Type classes would require a lot of extra work in the type inference
+    algorithm.
+\item[No type signatures]
+    Type inference on Haskell 98 is decidable, and we don't have to resolve
+    ambiguous types due to our lack of type classes, so it's not really worth
+    implementing support for type signatures.
+\item[Monomorphic literals]
+    Literals (at least the numeric ones) are polymorphic in Haskell 98, with
+    a type class restriction. Since we can't use type classes, we make literals
+    monomorphic instead.
+\item[No do-notation or list comprehensions]
+    These constructs are pure syntactic sugar. We don't use them in our examples,
+    so we don't bother to implement a desugaring for them.
+\item[No modularity]
+    Since our examples fit in a single module, we don't implement module imports
+    or exports (let alone the FFI).
 \end{description}
 
-Furthermore, we initially choose to perform a monomorphic, monovariant analysis.
-
 \section{The language}
-We consider a desugared form of Haskell 2010.
+We consider a desugared form of Haskell 98.
 
 \begin{code}
 data Term = LiteralTerm     {literal :: Literal}
