@@ -25,7 +25,7 @@ data Type = BasicType BasicType
           -- | Forall Name Type (polymorphism)
 
 instance Show Type where
-    showsPrec n (BasicType k) = showsPrec n k
+    showsPrec _ (BasicType k) = showsPrec 0 k
     showsPrec _ (DataType k) = (k++)
     showsPrec _ (ListType ty)
         = ("["++)
@@ -35,13 +35,16 @@ instance Show Type where
         = ("("++)
         . (intercalate ", " (map (\t -> showsPrec 0 t "") tys) ++)
         . (")"++)
-    showsPrec n (Arrow _ lhs rhs)
-        = ((if n > 0 then "(" else "")++)
-        . showsPrec 10 lhs
-        . ((if n > 0 then ")" else "")++)
+    showsPrec _ (Arrow _ lhs@(Arrow _ _ _) rhs)
+        = ("("++)
+        . showsPrec 0 lhs
+        . (") -> "++)
+        . showsPrec 0 rhs
+    showsPrec _ (Arrow _ lhs rhs)
+        = showsPrec 0 lhs
         . (" -> "++)
         . showsPrec 0 rhs
-    showsPrec n (TyVar k) = (k++)
+    showsPrec _ (TyVar k) = (k++)
 
 -- | A few build-in types.
 data BasicType = Integer
@@ -135,10 +138,3 @@ addDataDef :: DataDef -> DataEnv -> DataEnv
 addDataDef def env = env {defs = M.insert dname def (defs env), conNameMap = addCons $ ctors def}
  where dname = dataName def
        addCons cs = foldr (\(DataCon n _) -> (M.insert n dname .)) id cs $ conNameMap env
-
--- | Update a type environment with the type signatures for constructors used within a DataEnv so 
---   those can be treated as functions.
-constructorTypes :: DataEnv -> TyEnv -> TyEnv
-constructorTypes env = foldr (.) id $ concatMap (conTypes . snd) $ M.assocs $ defs env
- where conTypes (DataDef dname ctors) = map (\(DataCon n ms) -> M.insert n (mkFunc ms dname)) ctors
-       mkFunc ins out = foldr (Arrow Nothing) (DataType out) ins
