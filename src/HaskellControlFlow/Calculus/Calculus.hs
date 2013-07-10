@@ -16,37 +16,44 @@ type CallGraph = [(Term (), Name, [Name])]
 -- | Terms.
 data Term a = LiteralTerm       a Literal
             | VariableTerm      a Name
+            | HardwiredTerm     a HardwiredValue
             | ApplicationTerm   a (Term a) (Term a)
             | AbstractionTerm   a Name (Term a)
             | LetInTerm         a Name (Term a) (Term a)
             | CaseTerm          a (Term a) [(Pattern, Term a)]
-            | ListTerm          a [Term a]
-            | TupleTerm         a [Term a]
             | FixTerm           a (Term a)
               deriving (Show)
+
+data HardwiredValue
+    = HwTupleCon Int
+    | HwListCons
+    | HwListNil
+
+instance Show HardwiredValue where
+    show (HwTupleCon n) = "(" ++ replicate n ',' ++ ")"
+    show HwListCons = "(:)"
+    show HwListNil = "[]"
 
 annotation :: Term a -> a
 annotation term_ = case term_ of
     LiteralTerm     a _     -> a
     VariableTerm    a _     -> a
+    HardwiredTerm   a _     -> a
     ApplicationTerm a _ _   -> a
     AbstractionTerm a _ _   -> a
     LetInTerm       a _ _ _ -> a
     CaseTerm        a _ _   -> a
-    ListTerm        a _     -> a
-    TupleTerm       a _     -> a
     FixTerm         a _     -> a
 
 shallowMapAnnotation :: (a -> a) -> Term a -> Term a
 shallowMapAnnotation f term_ = case term_ of
     LiteralTerm     ann c       -> LiteralTerm (f ann) c
     VariableTerm    ann n       -> VariableTerm (f ann) n
+    HardwiredTerm   ann h       -> HardwiredTerm (f ann) h
     ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) lhs rhs
     AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd trm
     LetInTerm   ann bnd tm1 tm2 -> LetInTerm (f ann) bnd tm1 tm2
     CaseTerm        ann scr mtc -> CaseTerm (f ann) scr mtc
-    ListTerm        ann trms    -> ListTerm (f ann) trms
-    TupleTerm       ann trms    -> TupleTerm (f ann) trms
     FixTerm         ann trm     -> FixTerm (f ann) trm
 
 -- | Patterns within case-expressions.
@@ -73,12 +80,11 @@ instance Functor Term where
     fmap f term_ = case term_ of
         LiteralTerm     ann c       -> LiteralTerm (f ann) c
         VariableTerm    ann n       -> VariableTerm (f ann) n
+        HardwiredTerm   ann h       -> HardwiredTerm (f ann) h
         ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) (fmap f lhs) (fmap f rhs)
         AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd (fmap f trm)
         LetInTerm   ann bnd tm1 tm2 -> LetInTerm (f ann) bnd (fmap f tm1) (fmap f tm2)
         CaseTerm        ann scr mtc -> CaseTerm (f ann) (fmap f scr) (fmap (second (fmap f)) mtc)
-        ListTerm        ann trms    -> ListTerm (f ann) (fmap (fmap f) trms)
-        TupleTerm       ann trms    -> TupleTerm (f ann) (fmap (fmap f) trms)
         FixTerm         ann trm     -> FixTerm (f ann) (fmap f trm)
 
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
@@ -89,14 +95,13 @@ replaceVar from to = rep
          LiteralTerm ann c                           -> LiteralTerm ann c
          VariableTerm ann v              | v == from -> to
                                          | otherwise -> VariableTerm ann v
+         HardwiredTerm ann h                         -> HardwiredTerm ann h
          ApplicationTerm ann l r                     -> ApplicationTerm ann (rep l) (rep r)
          AbstractionTerm ann n b         | n == from -> AbstractionTerm ann n b -- Name is shadowed.
                                          | otherwise -> AbstractionTerm ann n (rep b)
          LetInTerm ann n a b             | n == from -> LetInTerm ann n a b
                                          | otherwise -> LetInTerm ann n (rep a) (rep b)
          CaseTerm ann e as                           -> CaseTerm ann (rep e) (map repAlt as)
-         ListTerm ann ts                             -> ListTerm ann (map rep ts)
-         TupleTerm ann ts                            -> TupleTerm ann (map rep ts)
          FixTerm ann f                               -> FixTerm ann (rep f)
        
        repAlt p@(Variable n, t)   | n == from = p
@@ -110,12 +115,11 @@ makeCallGraph = map (\(n, t) -> (t, n, names t))
         case t of
          LiteralTerm _ _ -> []
          VariableTerm _ n -> [n]
+         HardwiredTerm _ _ -> []
          ApplicationTerm _ l r -> names l ++ names r
          AbstractionTerm _ n b -> removeAll n $ names b -- Do not include the scoped variable.
          LetInTerm _ n t1 t2 -> removeAll n $ names t1 ++ names t2
          CaseTerm _ e as -> names e ++ concatMap altNames as
-         ListTerm _ ts -> concatMap names ts
-         TupleTerm _ ts -> concatMap names ts
          FixTerm _ f -> names f
        
        removeAll _ [] = []

@@ -18,6 +18,8 @@ formatTermHelper term indentation = case term of
         formatConstant c
     VariableTerm _ n ->
         n
+    HardwiredTerm _ h ->
+        show h
     ApplicationTerm _ lhsTerm rhsTerm ->
         '(' : formatTermHelper lhsTerm indentation ++ ' ' : (formatTermHelper rhsTerm indentation) ++ ")"
     AbstractionTerm _ argName bodyTerm ->
@@ -28,10 +30,6 @@ formatTermHelper term indentation = case term of
     CaseTerm _ scrutinee alternatives ->
         "\n" ++ indentation ++ "case " ++ formatTermHelper scrutinee indentation ++ " of"
         ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTermHelper expr ('\t' : indentation)) alternatives
-    ListTerm _ terms -> 
-        "[" ++ intercalate ", " (map (flip formatTermHelper "") terms) ++ "]"
-    TupleTerm _ terms -> 
-        "(" ++ intercalate ", " (map (flip formatTermHelper "") terms) ++ ")"
     FixTerm _ term ->
         "fix (" ++ formatTermHelper term "" ++ ")"
 

@@ -100,9 +100,14 @@ parseExpression expr = case expr of
      CaseTerm () (parseExpression expr) (map parseCaseAlternative alternatives)
 
     HsTuple values -> 
-     TupleTerm () $ map parseExpression values
+     let acc `noc` x = ApplicationTerm () acc x
+         lin = HardwiredTerm () (HwTupleCon (length values))
+     in foldl noc lin $ map parseExpression values
+
     HsList values -> 
-     ListTerm () $ map parseExpression values
+     let x `con` xs = ApplicationTerm () (ApplicationTerm () (HardwiredTerm () HwListCons) x) xs
+         nil = HardwiredTerm () HwListNil
+     in foldr con nil $ map parseExpression values
 
     -- Unsuported features.
     HsDo _                 -> error "Do notation not supported."

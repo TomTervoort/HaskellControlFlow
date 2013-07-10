@@ -20,7 +20,10 @@ showAnalysis annEnv tt = case tt of
         
     VariableTerm _ _ ->
         return ()
-        
+
+    HardwiredTerm _ _ ->
+        return ()
+
     FixTerm _ fixedTerm -> do
         showAnalysis annEnv fixedTerm
     
@@ -53,12 +56,6 @@ showAnalysis annEnv tt = case tt of
     CaseTerm _ exprTerm alts -> do
         showAnalysis annEnv exprTerm
         mapM_ (\(_, term) -> showAnalysis annEnv term) alts
-        
-    ListTerm _ terms -> do
-        mapM_ (showAnalysis annEnv) terms
-        
-    TupleTerm _ terms -> do
-        mapM_ (showAnalysis annEnv) terms
 
 -- | Main method.
 main :: IO ()

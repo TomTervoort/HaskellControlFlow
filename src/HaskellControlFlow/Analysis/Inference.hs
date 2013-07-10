@@ -115,6 +115,46 @@ algorithmW defs env constraints term = case term of
             Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
             Just ty -> return (ty <$ term, id, constraints)
 
+    HardwiredTerm _ (HwTupleCon n) -> do
+        argTypes <- map TyVar <$> replicateM n freshVar
+        ann1 <- freshVar
+        ann2 <- freshVar
+        let annText1 = "(" ++ replicate n ',' ++ ")"
+        let annText2 = "{inside " ++ annText1 ++ "}"
+
+        let resultType = TupleType argTypes
+        let termType = foldr (Arrow Nothing) resultType argTypes
+        
+        let (termType', constraints') = case termType of
+                Arrow _ fstTy moreTy ->
+                    (Arrow (Just ann1) fstTy (replaceAnnVarInSpine (const (Just ann2)) moreTy)
+                    , InclusionConstraint ann1 annText1
+                    : InclusionConstraint ann2 annText2
+                    : constraints)
+                _ -> (termType, constraints)
+
+        return (termType' <$ term, id, constraints')
+
+    HardwiredTerm _ HwListCons -> do
+        ty <- TyVar <$> freshVar
+        ann1 <- freshVar
+        ann2 <- freshVar
+        let annText1 = "(:)"
+        let annText2 = "{inside " ++ annText1 ++ "}"
+
+        let constraints' =
+                ( InclusionConstraint ann1 annText1
+                : InclusionConstraint ann2 annText2
+                : constraints)
+
+        let termType = Arrow (Just ann1) ty (Arrow (Just ann2) (ListType ty) (ListType ty))
+        return (termType <$ term, id, constraints')
+
+    HardwiredTerm _ HwListNil -> do
+        ty <- TyVar <$> freshVar
+        let termType = ListType ty
+        return (termType <$ term, id, constraints)
+
     AbstractionTerm _ name t1 -> do
         a1 <- TyVar <$> freshVar
 
@@ -165,42 +205,6 @@ algorithmW defs env constraints term = case term of
         let typedTerm = LetInTerm termType name (const newType `shallowMapAnnotation` tt1) tt2
         
         return (typedTerm, s2 . s1, constraints3)
-
-    ListTerm _ ts -> 
-     -- Unify the types of all members of the list literal.
-     let inferMember (ty, s1, constraints, typedTerms) term = do
-             (tt, s2, constraints1) <- algorithmW defs (M.map s1 env) constraints term
-             (s3, constraints2) <- unify ty (annotation tt) constraints1
-             
-             let sx = s3 . s2 . s1
-             
-             return (sx ty, sx, constraints2, typedTerms ++ [tt])
-     in case ts of
-         []     -> fail "Polymorphism is not supported, so can't infer the empty lists."
-         (t:ts) -> do
-             (tt1, s2, constraints1)            <- algorithmW defs env constraints t
-             (ty, s3, constraints2, typedTerms) <- foldM inferMember (annotation tt1, s2, constraints1, []) ts
-             
-             let termType  = ListType ty
-             let typedTerm = ListTerm termType typedTerms
-             
-             return (typedTerm, s3, constraints2)
-
-    TupleTerm _ ts ->
-        -- Similar to inferring lists, but types of members do not have to match.
-        let inferMember (tys, s1, constraints, typedTerms) term = do
-                (tt, s2, constraints1) <- algorithmW defs (M.map s1 env) constraints term
-                
-                let sx = s2 . s1
-                
-                return (tys ++ [sx $ annotation tt], sx, constraints1, typedTerms ++ [tt])
-        in do
-            (tys, s, constraints1, typedTerms) <- foldM inferMember ([], id, constraints, []) ts
-             
-            let termType  = TupleType tys
-            let typedTerm = TupleTerm termType typedTerms
-            
-            return (typedTerm, s, constraints1)
 
     CaseTerm _ t1 patterns -> do
         (tt, s1, constaints1) <- algorithmW defs env constraints t1
