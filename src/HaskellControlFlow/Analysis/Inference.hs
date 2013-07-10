@@ -264,47 +264,44 @@ algorithmW defs env constraints term = case term of
 
 -- | Constraint solver.
 solveAnnConstraints :: AnnConstraints -> AnnEnv
-solveAnnConstraints []     = (M.empty, M.empty)
-solveAnnConstraints (x:xs) = case x of
+solveAnnConstraints = foldr go (AnnEnv M.empty M.empty)
+ where
+  go x (AnnEnv allNames substitutions) = case x of
     InclusionConstraint var name ->
         let
-            (allNames, substitutions) = solveAnnConstraints xs
-            
             realVar = cannonicalVarName var substitutions
             
-        in case M.lookup realVar allNames of
-            Just varNames -> (M.insert realVar (S.insert name varNames) allNames, substitutions)
-            Nothing       -> (M.insert realVar (S.insert name S.empty)  allNames, substitutions)
+            varNames = M.findWithDefault S.empty realVar allNames
+            newNames = M.insert realVar (S.insert name varNames) allNames
+
+        in AnnEnv newNames substitutions
     
-    SubstituteConstraint first second ->
+    SubstituteConstraint lhs rhs ->
         let
-            (allNames, substitutions) = solveAnnConstraints xs
-            
-            insertSubsitution first second = 
-                if realSecond == realFirst
-                then (allNames, substitutions)
-                else case M.lookup first substitutions of
+            realLhs = cannonicalVarName lhs substitutions
+            realRhs = cannonicalVarName rhs substitutions
+
+            insertSubstitution first second = 
+                case M.lookup lhs substitutions of
                         Just _ ->
                             -- Let's merge these two.
                             let
-                                firstNames       = M.findWithDefault S.empty realFirst allNames
-                                secondNames      = M.findWithDefault S.empty realSecond allNames
-                                unionNames       = firstNames `S.union` secondNames
-                                newAllNames      = M.insert realFirst unionNames $ M.delete realSecond allNames
-                                newSubstitutions = M.insert realSecond realFirst substitutions
+                                lhsNames    = M.findWithDefault S.empty realLhs allNames
+                                rhsNames    = M.findWithDefault S.empty realRhs allNames
+                                unionNames  = lhsNames `S.union` rhsNames
+                                newAllNames = M.insert realLhs unionNames $ M.delete realRhs allNames
+                                newSubstitutions = M.insert realRhs realLhs substitutions
                             in
-                                (newAllNames, newSubstitutions)
+                                AnnEnv newAllNames newSubstitutions
                         Nothing ->
                             -- Insert a new one.
-                            (allNames, M.insert first realSecond substitutions)
-                where
-                    realFirst  = cannonicalVarName first substitutions
-                    realSecond = cannonicalVarName second substitutions
-            
-        in 
-            case M.lookup (cannonicalVarName first substitutions) allNames of
-                Just _  -> insertSubsitution second first
-                Nothing -> insertSubsitution first second
+                            AnnEnv allNames (M.insert lhs realRhs substitutions)
+
+        in  if realLhs == realRhs
+            then AnnEnv allNames substitutions
+            else case M.lookup (cannonicalVarName lhs substitutions) allNames of
+                Just _  -> insertSubstitution rhs lhs
+                Nothing -> insertSubstitution lhs rhs
 
 -- | Normalizes a variable name.
 cannonicalVarName :: AnnVar -> M.Map AnnVar AnnVar -> AnnVar
@@ -314,7 +311,7 @@ cannonicalVarName var substitutions = case M.lookup var substitutions of
 
 -- | Looks up annotation names in the solved annotations.
 lookupAnnNames :: AnnVar -> AnnEnv -> [Name]
-lookupAnnNames var (allNames, substitutions) =
+lookupAnnNames var (AnnEnv allNames substitutions) =
     case M.lookup (cannonicalVarName var substitutions) allNames of
         Just namesSet -> S.toList namesSet
         Nothing       -> []

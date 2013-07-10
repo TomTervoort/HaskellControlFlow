@@ -58,7 +58,7 @@ data AnnConstraint = InclusionConstraint AnnVar Name
                      deriving (Show)
 
 -- | Annotation environment.
-type AnnEnv = (M.Map AnnVar (S.Set Name), M.Map AnnVar AnnVar)
+data AnnEnv = AnnEnv (M.Map AnnVar (S.Set Name)) (M.Map AnnVar AnnVar)
 
 -- | Annotation constraints.
 type AnnConstraints = [AnnConstraint]
