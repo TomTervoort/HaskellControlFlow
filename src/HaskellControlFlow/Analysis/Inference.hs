@@ -44,10 +44,10 @@ gen env ty = ty
     -- For polymorphism: S.foldr Forall ty $ freeVars ty `S.difference` freeEnvVars env
 
 -- | Type instantiation. (TODO)
-inst :: VarFactory -> Type -> (Type, VarFactory)
+inst :: (Fresh m Integer, Monad m) => Type -> m Type
 {-- Poly: inst fac (Forall a t) = let (fresh, fac') = freshTyVar fac
                                    in first (subTyVar a $ TyVar fresh) $ inst fac' t --}
-inst fac ty = (ty, fac)
+inst ty = return ty
 
 -- Substitute one type variable with a type.
 subTyVar :: TyVar -> Type -> TySubst
