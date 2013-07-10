@@ -52,17 +52,6 @@ data BasicType = Integer
 -- | Annotation variable.
 type AnnVar = Name
 
--- | Annotation constraint.
-data AnnConstraint = InclusionConstraint AnnVar Name
-                   | SubstituteConstraint AnnVar AnnVar
-                     deriving (Show)
-
--- | Annotation environment.
-data AnnEnv = AnnEnv (M.Map AnnVar (S.Set Name)) (M.Map AnnVar AnnVar)
-
--- | Annotation constraints.
-type AnnConstraints = [AnnConstraint]
-
 -- | A type environment: a mapping from variable names to their inferred types.
 type TyEnv = Map Name Type
 

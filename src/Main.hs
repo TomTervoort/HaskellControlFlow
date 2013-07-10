@@ -6,6 +6,7 @@ import HaskellControlFlow.Parser.Parser
 import HaskellControlFlow.Calculus.Calculus
 import HaskellControlFlow.Calculus.Formatter
 import HaskellControlFlow.Calculus.Types
+import HaskellControlFlow.Analysis.CfaSolver
 import HaskellControlFlow.Analysis.Inference
 
 import System.Environment
