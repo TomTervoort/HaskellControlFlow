@@ -14,30 +14,30 @@ formatTerm term = (formatTermHelper term "") ++ "\n"
 -- | Formats a term helper.
 formatTermHelper :: Term a -> String -> String
 formatTermHelper term indentation = case term of
-    LiteralTerm {constant = constant} ->
-        formatConstant constant
-    VariableTerm {varName = varName} ->
-        varName
-    ApplicationTerm {lhsTerm = lhsTerm, rhsTerm = rhsTerm} ->
+    LiteralTerm _ c ->
+        formatConstant c
+    VariableTerm _ n ->
+        n
+    ApplicationTerm _ lhsTerm rhsTerm ->
         '(' : formatTermHelper lhsTerm indentation ++ ' ' : (formatTermHelper rhsTerm indentation) ++ ")"
-    AbstractionTerm {argName = argName, bodyTerm = bodyTerm} ->
+    AbstractionTerm _ argName bodyTerm ->
         '\\' : argName ++ " -> " ++ formatTermHelper bodyTerm indentation
-    LetInTerm {letTerm = letTerm, inTerm = inTerm} ->
-        "\n" ++ indentation ++ "let" ++ formatNamedTerm letTerm ('\t' : indentation) ++
+    LetInTerm _ binder letTerm inTerm ->
+        "\n" ++ indentation ++ "let" ++ formatNamedTerm binder letTerm ('\t' : indentation) ++
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTermHelper inTerm ('\t' : indentation)
-    CaseTerm {exprTerm = exprTerm, alts = alts} ->
-        "\n" ++ indentation ++ "case " ++ formatTermHelper exprTerm indentation ++ " of"
-        ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTermHelper expr ('\t' : indentation)) alts
-    ListTerm {terms = terms} -> 
+    CaseTerm _ scrutinee alternatives ->
+        "\n" ++ indentation ++ "case " ++ formatTermHelper scrutinee indentation ++ " of"
+        ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTermHelper expr ('\t' : indentation)) alternatives
+    ListTerm _ terms -> 
         "[" ++ intercalate ", " (map (flip formatTermHelper "") terms) ++ "]"
-    TupleTerm {terms = terms} -> 
+    TupleTerm _ terms -> 
         "(" ++ intercalate ", " (map (flip formatTermHelper "") terms) ++ ")"
-    FixTerm {fixedTerm = term} ->
+    FixTerm _ term ->
         "fix (" ++ formatTermHelper term "" ++ ")"
 
 -- Formats a named term.
-formatNamedTerm :: NamedTerm a -> String -> String
-formatNamedTerm NamedTerm {name = name, term = term} indentation =
+formatNamedTerm :: Name -> Term a -> String -> String
+formatNamedTerm name term indentation =
     "\n" ++ indentation ++ name ++ " = " ++ formatTermHelper term ('\t' : indentation)
 
 -- Formats a constant.

@@ -2,6 +2,7 @@
 
 module HaskellControlFlow.Calculus.Calculus where
 
+import Control.Arrow
 import Data.Graph
 import Data.List
 import Data.Maybe
@@ -13,25 +14,45 @@ import Debug.Trace
 type CallGraph = [(Term (), Name, [Name])]
 
 -- | Terms.
-data Term a = LiteralTerm {annotation :: a, constant :: Literal}
-            | VariableTerm {annotation :: a, varName :: Name}
-            | ApplicationTerm {annotation :: a, lhsTerm :: Term a, rhsTerm :: Term a}
-            | AbstractionTerm {annotation :: a, argName :: Name, bodyTerm :: Term a}
-            | LetInTerm {annotation :: a, letTerm :: NamedTerm a, inTerm :: Term a}
-            | CaseTerm {annotation :: a, exprTerm :: Term a, alts :: [(Pattern, Term a)]}
-            | ListTerm {annotation :: a, terms :: [Term a]}
-            | TupleTerm {annotation :: a, terms :: [Term a]}
-            | FixTerm {annotation :: a, fixedTerm :: Term a}
+data Term a = LiteralTerm       a Literal
+            | VariableTerm      a Name
+            | ApplicationTerm   a (Term a) (Term a)
+            | AbstractionTerm   a Name (Term a)
+            | LetInTerm         a Name (Term a) (Term a)
+            | CaseTerm          a (Term a) [(Pattern, Term a)]
+            | ListTerm          a [Term a]
+            | TupleTerm         a [Term a]
+            | FixTerm           a (Term a)
               deriving (Show)
+
+annotation :: Term a -> a
+annotation term_ = case term_ of
+    LiteralTerm     a _     -> a
+    VariableTerm    a _     -> a
+    ApplicationTerm a _ _   -> a
+    AbstractionTerm a _ _   -> a
+    LetInTerm       a _ _ _ -> a
+    CaseTerm        a _ _   -> a
+    ListTerm        a _     -> a
+    TupleTerm       a _     -> a
+    FixTerm         a _     -> a
+
+shallowMapAnnotation :: (a -> a) -> Term a -> Term a
+shallowMapAnnotation f term_ = case term_ of
+    LiteralTerm     ann c       -> LiteralTerm (f ann) c
+    VariableTerm    ann n       -> VariableTerm (f ann) n
+    ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) lhs rhs
+    AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd trm
+    LetInTerm   ann bnd tm1 tm2 -> LetInTerm (f ann) bnd tm1 tm2
+    CaseTerm        ann scr mtc -> CaseTerm (f ann) scr mtc
+    ListTerm        ann trms    -> ListTerm (f ann) trms
+    TupleTerm       ann trms    -> TupleTerm (f ann) trms
+    FixTerm         ann trm     -> FixTerm (f ann) trm
 
 -- | Patterns within case-expressions.
 data Pattern = Variable Name
              | Pattern {ctorName :: Name, ctorArgs :: [Name]}
                deriving (Show)
-
--- | Named term.
-data NamedTerm a = NamedTerm {name :: Name, term :: Term a}
-                   deriving (Show)
 
 -- | Constants.
 data Literal = IntegerLit Integer
@@ -48,48 +69,17 @@ instance Show Literal where
 -- | Abstraction name.
 type Name = String
 
--- | Replaces the annotations on a term.
-replaceAnnotation :: (a -> b) -> Term a -> Term b
-replaceAnnotation f t = case t of
-    LiteralTerm {annotation = ann} ->
-        LiteralTerm {annotation = f ann
-                     ,constant   = constant t}
-    
-    VariableTerm {annotation = ann} ->
-        VariableTerm {annotation = f ann
-                     ,varName    = varName t}
-    
-    ApplicationTerm {annotation = ann, lhsTerm = lhsTerm, rhsTerm = rhsTerm} ->
-        ApplicationTerm {annotation = f ann
-                        ,lhsTerm    = replaceAnnotation f lhsTerm
-                        ,rhsTerm    = replaceAnnotation f rhsTerm}
-    
-    AbstractionTerm {annotation = ann, bodyTerm = bodyTerm} ->
-        AbstractionTerm {annotation = f ann
-                        ,argName    = argName t
-                        ,bodyTerm   = replaceAnnotation f bodyTerm}
-    
-    LetInTerm {annotation = ann, letTerm = letTerm, inTerm = inTerm} ->
-        LetInTerm {annotation = f ann
-                  ,letTerm    = NamedTerm {name = name letTerm, term = replaceAnnotation f $ term letTerm}
-                  ,inTerm     = replaceAnnotation f inTerm}
-     
-    CaseTerm {annotation = ann, exprTerm = exprTerm, alts = alts} ->
-        CaseTerm {annotation = f ann
-                 ,exprTerm   = replaceAnnotation f exprTerm
-                 ,alts       = map (\(p, term) -> (p, replaceAnnotation f term)) alts}
-    
-    ListTerm {annotation = ann, terms = terms} ->
-        ListTerm {annotation = f ann
-                 ,terms      = map (replaceAnnotation f) terms}
-    
-    TupleTerm {annotation = ann, terms = terms} ->
-        TupleTerm {annotation = f ann
-                  ,terms      = map (replaceAnnotation f) terms}
-    
-    FixTerm {annotation = ann, fixedTerm = fixedTerm} ->
-        FixTerm {annotation = f ann
-                ,fixedTerm  = replaceAnnotation f fixedTerm}
+instance Functor Term where
+    fmap f term_ = case term_ of
+        LiteralTerm     ann c       -> LiteralTerm (f ann) c
+        VariableTerm    ann n       -> VariableTerm (f ann) n
+        ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) (fmap f lhs) (fmap f rhs)
+        AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd (fmap f trm)
+        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (f ann) bnd (fmap f tm1) (fmap f tm2)
+        CaseTerm        ann scr mtc -> CaseTerm (f ann) (fmap f scr) (fmap (second (fmap f)) mtc)
+        ListTerm        ann trms    -> ListTerm (f ann) (fmap (fmap f) trms)
+        TupleTerm       ann trms    -> TupleTerm (f ann) (fmap (fmap f) trms)
+        FixTerm         ann trm     -> FixTerm (f ann) (fmap f trm)
 
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
 replaceVar :: Name -> Term a -> Term a -> Term a
@@ -102,9 +92,9 @@ replaceVar from to = rep
          ApplicationTerm ann l r                     -> ApplicationTerm ann (rep l) (rep r)
          AbstractionTerm ann n b         | n == from -> AbstractionTerm ann n b -- Name is shadowed.
                                          | otherwise -> AbstractionTerm ann n (rep b)
-         LetInTerm ann (NamedTerm n a) b | n == from -> LetInTerm ann (NamedTerm n a) b
-                                         | otherwise -> LetInTerm ann (NamedTerm n $ rep a) (rep b)
-         CaseTerm ann e as                           -> CaseTerm ann (rep e) $ map repAlt as
+         LetInTerm ann n a b             | n == from -> LetInTerm ann n a b
+                                         | otherwise -> LetInTerm ann n (rep a) (rep b)
+         CaseTerm ann e as                           -> CaseTerm ann (rep e) (map repAlt as)
          ListTerm ann ts                             -> ListTerm ann (map rep ts)
          TupleTerm ann ts                            -> TupleTerm ann (map rep ts)
          FixTerm ann f                               -> FixTerm ann (rep f)
@@ -114,15 +104,15 @@ replaceVar from to = rep
        repAlt p@(Pattern c as, t) | from `elem` as = p
                                   | otherwise = (Pattern c as, rep t) 
 
-makeCallGraph :: [NamedTerm ()] -> CallGraph
-makeCallGraph = map (\(NamedTerm n t) -> (t, n, names t))
+makeCallGraph :: [(Name, Term ())] -> CallGraph
+makeCallGraph = map (\(n, t) -> (t, n, names t))
  where names t = 
         case t of
          LiteralTerm _ _ -> []
          VariableTerm _ n -> [n]
          ApplicationTerm _ l r -> names l ++ names r
          AbstractionTerm _ n b -> removeAll n $ names b -- Do not include the scoped variable.
-         LetInTerm _ (NamedTerm n t1) t2 -> removeAll n $ names t1 ++ names t2
+         LetInTerm _ n t1 t2 -> removeAll n $ names t1 ++ names t2
          CaseTerm _ e as -> names e ++ concatMap altNames as
          ListTerm _ ts -> concatMap names ts
          TupleTerm _ ts -> concatMap names ts
@@ -139,16 +129,16 @@ makeCallGraph = map (\(NamedTerm n t) -> (t, n, names t))
 --   the nodes in these components and then redefines these nodes with a fixed-point combinator.
 --   Returns a list of named terms in such an order that no term variables will refer to a let that
 --   is positioned further in the list.
-fixRecursion :: CallGraph -> [NamedTerm ()]
+fixRecursion :: CallGraph -> [(Name, Term ())]
 fixRecursion = concatMap handleSCC . stronglyConnCompR
- where handleSCC (AcyclicSCC (t, n, _)) = [NamedTerm n t]
+ where handleSCC (AcyclicSCC (t, n, _)) = [(n, t)]
        handleSCC (CyclicSCC ns) = uncurry (++) $ unzip $ map (handleNode $ map middle ns) ns
        middle (_,x,_) = x
        absName n = "@" ++ n ++ "@"
 
-       handleNode :: [Name] -> (Term (), Name, [Name]) -> (NamedTerm (), NamedTerm ())
-       handleNode group (t, name, _) = (NamedTerm (absName name) $ abstracted group, 
-                                        NamedTerm name           $ fixed 0 nameIndex)
+       handleNode :: [Name] -> (Term (), Name, [Name]) -> ((Name, Term ()), (Name, Term ()))
+       handleNode group (t, name, _) = ((absName name, abstracted group), 
+                                        (name        , fixed 0 nameIndex))
         where nameIndex = fromJust $ findIndex (== name) group
               
               abstracted :: [Name] -> Term ()
@@ -174,15 +164,11 @@ fixRecursion = concatMap handleSCC . stronglyConnCompR
               appSequence :: [Term ()] -> Term ()
               appSequence = foldl1 (ApplicationTerm ())
 
-namedTermsToLets :: [NamedTerm ()] -> Term () -> Term ()
-namedTermsToLets = foldr (\n -> (LetInTerm () n .)) id
+namedTermsToLets :: [(Name, Term ())] -> Term () -> Term ()
+namedTermsToLets = foldr (\(n, t) -> (LetInTerm () n t .)) id
 
 -- | Smart constructor for multiple let-terms following each other in an expression.
 --   The lets may refer to each other, because this function will handle ordening and (mutual) 
 --   recursion.
-letGroup :: [NamedTerm ()] -> Term () -> Term ()
+letGroup :: [(Name, Term ())] -> Term () -> Term ()
 letGroup lhss = namedTermsToLets $ fixRecursion $ makeCallGraph lhss
-
-{-- letGroup [NamedTerm n def] t = LetInTerm (NamedTerm n def) t
-letGroup (n:ns) t = LetInTerm n $ letGroup ns t
-letGroup [] _ = error "Provide at least one named term."  --}

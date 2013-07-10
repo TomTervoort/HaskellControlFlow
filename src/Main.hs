@@ -14,16 +14,16 @@ import Data.List
 -- | Walks over typed tree, and shows possible functions of applications.
 showAnalysis :: AnnEnv -> Term Type -> IO ()
 showAnalysis annEnv tt = case tt of
-    LiteralTerm {} ->
+    LiteralTerm _ _ ->
         return ()
         
-    VariableTerm {} ->
+    VariableTerm _ _ ->
         return ()
         
-    FixTerm {fixedTerm = fixedTerm} -> do
+    FixTerm _ fixedTerm -> do
         showAnalysis annEnv fixedTerm
     
-    ApplicationTerm {lhsTerm = lhsTerm, rhsTerm = rhsTerm} -> do
+    ApplicationTerm _ lhsTerm rhsTerm -> do
         showAnalysis annEnv lhsTerm
         showAnalysis annEnv rhsTerm
         
@@ -45,21 +45,21 @@ showAnalysis annEnv tt = case tt of
         
         putStr "\n"
         
-    AbstractionTerm {bodyTerm = bodyTerm} ->
+    AbstractionTerm _ _ bodyTerm ->
         showAnalysis annEnv bodyTerm
         
-    LetInTerm {letTerm = (NamedTerm {term = letTerm}), inTerm = inTerm} -> do
+    LetInTerm _ _ letTerm inTerm -> do
         showAnalysis annEnv letTerm
         showAnalysis annEnv inTerm
         
-    CaseTerm {exprTerm = exprTerm, alts = alts} -> do
+    CaseTerm _ exprTerm alts -> do
         showAnalysis annEnv exprTerm
         mapM_ (\(_, term) -> showAnalysis annEnv term) alts
         
-    ListTerm {terms = terms} -> do
+    ListTerm _ terms -> do
         mapM_ (showAnalysis annEnv) terms
         
-    TupleTerm {terms = terms} -> do
+    TupleTerm _ terms -> do
         mapM_ (showAnalysis annEnv) terms
 
 -- | Main method.

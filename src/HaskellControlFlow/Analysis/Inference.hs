@@ -106,12 +106,12 @@ algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnCo
     m (Term Type, TySubst, AnnConstraints)
 algorithmW defs env constraints term = case term of
     LiteralTerm _ c ->
-         return (LiteralTerm {annotation = (constantType c), constant = constant term}, id, constraints)
+         return (constantType c <$ term, id, constraints)
 
     VariableTerm _ name -> 
         case M.lookup name env of
             Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
-            Just ty -> return (VariableTerm {annotation = ty, varName = varName term}, id, constraints)
+            Just ty -> return (ty <$ term, id, constraints)
 
     AbstractionTerm _ name t1 -> do
         a1 <- TyVar <$> freshVar
@@ -121,7 +121,7 @@ algorithmW defs env constraints term = case term of
         (tt1, s, constraints1) <- algorithmW defs env1 constraints t1
         
         let termType  = Arrow Nothing (s a1) (annotation tt1)
-        let typedTerm = AbstractionTerm {annotation = termType, argName = argName term, bodyTerm = tt1}
+        let typedTerm = AbstractionTerm termType name tt1
         
         return (typedTerm, s, constraints1)
 
@@ -135,11 +135,11 @@ algorithmW defs env constraints term = case term of
         (s3, constraints3) <- unify (s2 $ annotation tt1) (Arrow (Just a2) (annotation tt2) a1) constraints2
         
         let termType  = s3 a1
-        let typedTerm = ApplicationTerm {annotation = termType, lhsTerm = tt1, rhsTerm = tt2}
+        let typedTerm = ApplicationTerm termType tt1 tt2
         
         return (typedTerm, s3 . s2 . s1, constraints3)
 
-    LetInTerm _ (NamedTerm name t1) t2 -> do
+    LetInTerm _ name t1 t2 -> do
         a1 <- freshVar
         
         (tt1, s1, constraints1) <- algorithmW defs env constraints t1
@@ -160,7 +160,7 @@ algorithmW defs env constraints term = case term of
                     _                   -> constraints2
         
         let termType  = annotation tt2
-        let typedTerm = LetInTerm {annotation = termType, letTerm = NamedTerm name (tt1 {annotation = newType}), inTerm = tt2}
+        let typedTerm = LetInTerm termType name (const newType `shallowMapAnnotation` tt1) tt2
         
         return (typedTerm, s2 . s1, constraints3)
 
@@ -180,7 +180,7 @@ algorithmW defs env constraints term = case term of
              (ty, s3, constraints2, typedTerms) <- foldM inferMember (annotation tt1, s2, constraints1, []) ts
              
              let termType  = ListType ty
-             let typedTerm = ListTerm {annotation = termType, terms = typedTerms}
+             let typedTerm = ListTerm termType typedTerms
              
              return (typedTerm, s3, constraints2)
 
@@ -196,7 +196,7 @@ algorithmW defs env constraints term = case term of
             (tys, s, constraints1, typedTerms) <- foldM inferMember ([], id, constraints, []) ts
              
             let termType  = TupleType tys
-            let typedTerm = TupleTerm {annotation = termType, terms = typedTerms}
+            let typedTerm = TupleTerm termType typedTerms
             
             return (typedTerm, s, constraints1)
 
@@ -206,7 +206,7 @@ algorithmW defs env constraints term = case term of
         (ty, s2, constaints2, typedAlts) <- handlePatterns (annotation tt, s1, constaints1) patterns
         
         let termType  = ty
-        let typedTerm = CaseTerm {annotation = termType, exprTerm = tt, alts = typedAlts}
+        let typedTerm = CaseTerm termType tt typedAlts
         
         return (typedTerm, s2, constaints2)
         
@@ -258,7 +258,7 @@ algorithmW defs env constraints term = case term of
         (s1, c2) <- unify (annotation fty) (Arrow Nothing ty ty) c1
         
         let termType  = s1 ty
-        let typedTerm = FixTerm {annotation = termType, fixedTerm = fty}
+        let typedTerm = FixTerm termType fty
         
         return (typedTerm, s1 . s, c2)
 
@@ -363,4 +363,4 @@ inferPrincipalType' term dataTypes = do
     
     let newEnv = M.map s env
     
-    return (gen newEnv $ annotation tt, replaceAnnotation s tt, solveAnnConstraints constraints)
+    return (gen newEnv $ annotation tt, fmap s tt, solveAnnConstraints constraints)

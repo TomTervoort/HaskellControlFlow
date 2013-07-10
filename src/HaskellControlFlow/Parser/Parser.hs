@@ -28,10 +28,10 @@ parseHaskellModule :: HsModule -> HaskellProgram ()
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     let (defs, lets) = partitionEithers $ concatMap parseDeclaration declarations
      in HaskellProgram {dataTypes = foldr addDataDef initEnv defs,
-                        topExpr   = letGroup lets (VariableTerm {varName = "main"})}
+                        topExpr   = letGroup lets (VariableTerm () "main")}
 
 -- | Parses a data or function declaration.
-parseDeclaration :: HsDecl -> [Either DataDef (NamedTerm ())]
+parseDeclaration :: HsDecl -> [Either DataDef (Name, Term ())]
 parseDeclaration declaration = case declaration of
     HsTypeDecl _ _ _ _  -> [] -- Just skip them.
     HsInfixDecl _ _ _ _ -> [] -- Parser will take care of this.
@@ -42,10 +42,10 @@ parseDeclaration declaration = case declaration of
      | otherwise         -> [Left $ DataDef {dataName = parseName name, ctors = map parseDataCon constructors}]
     
     HsPatBind _ pattern rhs whereDeclarations ->
-        [Right $ NamedTerm {name = parseNamePattern pattern, term = parseLambda [] rhs whereDeclarations}]
+        [Right (parseNamePattern pattern, parseLambda [] rhs whereDeclarations)]
     
     HsFunBind matches -> 
-     [Right $ uncurry NamedTerm (parseFunBindings matches)]
+     [Right $ parseFunBindings matches]
 
     -- Unsuported features.
     HsNewTypeDecl _ _ _ _ _ _   -> error "New type notation not supported."
@@ -59,17 +59,17 @@ parseDeclaration declaration = case declaration of
 parseExpression :: HsExp -> Term ()
 parseExpression expr = case expr of    
     HsVar name ->
-        VariableTerm {varName = parseQName name}
+        VariableTerm () $ parseQName name
         
     HsCon name ->
-        VariableTerm {varName = parseQName name}
+        VariableTerm () $ parseQName name
     
     HsLit literal ->
         parseLiteral literal
     
     HsApp lhsExpr rhsExpr ->
-        ApplicationTerm {lhsTerm = parseExpression lhsExpr
-                        ,rhsTerm = parseExpression rhsExpr}
+        ApplicationTerm () (parseExpression lhsExpr)
+                           (parseExpression rhsExpr)
     
     HsLambda _ patterns bodyExpr -> parseLambda patterns (HsUnGuardedRhs bodyExpr) []
     
@@ -78,18 +78,18 @@ parseExpression expr = case expr of
                      (parseExpression inExpr)
     
     HsIf firstExpr thenExpr elseExpr ->
-        CaseTerm {exprTerm = parseExpression firstExpr,
-                  alts     = [
+        CaseTerm () (parseExpression firstExpr)
+                             [
                               (Pattern "True" [],  parseExpression thenExpr),
                               (Pattern "False" [], parseExpression elseExpr)
-                             ]}
+                             ]
     
     HsParen subExpr          -> parseExpression subExpr
     HsExpTypeSig _ subExpr _ -> parseExpression subExpr
     
     HsInfixApp l op r -> 
-        ApplicationTerm {lhsTerm = ApplicationTerm () (parseOperator op) (parseExpression l)
-                        ,rhsTerm = parseExpression r}
+        ApplicationTerm () (ApplicationTerm () (parseOperator op) (parseExpression l))
+                           (parseExpression r)
 
     HsLeftSection exp op  -> ApplicationTerm () (parseOperator op) (parseExpression exp)
     
@@ -97,8 +97,7 @@ parseExpression expr = case expr of
         ApplicationTerm () (VariableTerm () "negate") $ parseExpression subExpr
 
     HsCase expr alternatives -> 
-     CaseTerm {exprTerm = parseExpression expr,
-               alts     = map parseCaseAlternative alternatives}
+     CaseTerm () (parseExpression expr) (map parseCaseAlternative alternatives)
 
     HsTuple values -> 
      TupleTerm () $ map parseExpression values
@@ -107,13 +106,13 @@ parseExpression expr = case expr of
 
     -- Unsuported features.
     HsDo _                 -> error "Do notation not supported."
-    HsRecConstr _ _	       -> error "Record notation not supported."
+    HsRecConstr _ _           -> error "Record notation not supported."
     HsRecUpdate _ _        -> error "Record notation not supported."
     HsEnumFrom _           -> error "Enum notation not supported."
-    HsEnumFromTo _ _       -> error "Enum notation not supported."	
-    HsEnumFromThen _ _	   -> error "Enum notation not supported."
+    HsEnumFromTo _ _       -> error "Enum notation not supported."    
+    HsEnumFromThen _ _       -> error "Enum notation not supported."
     HsEnumFromThenTo _ _ _ -> error "Enum notation not supported."
-    HsListComp _ _	       -> error "List comprehensions not supported."
+    HsListComp _ _           -> error "List comprehensions not supported."
     HsRightSection _ _     -> error "Right section not supported."
     
     HsAsPat _ _ -> error "Pattern matching only supported on the first argument or within case alternatives."
@@ -123,10 +122,10 @@ parseExpression expr = case expr of
 -- | Parses a literal (constant) value.
 parseLiteral :: HsLiteral -> Term ()
 parseLiteral literal = case literal of
-    HsChar char	    -> LiteralTerm {constant = CharLit char}
-    HsString string	-> LiteralTerm {constant = StringLit string}
-    HsInt integer   -> LiteralTerm {constant = IntegerLit integer}
-    HsFrac rational	-> LiteralTerm {constant = RationalLit rational}
+    HsChar char        -> LiteralTerm () $ CharLit char
+    HsString string    -> LiteralTerm () $ StringLit string
+    HsInt integer   -> LiteralTerm () $ IntegerLit integer
+    HsFrac rational    -> LiteralTerm () $ RationalLit rational
     
     -- Unsuported features.
     _ -> error "Unboxed literals are not supported."
@@ -176,7 +175,7 @@ parseFuncBinding (HsMatch _ name args rhs whereDecls) =
 -- | Parses a lambda expression.
 parseLambda :: [HsPat] -> HsRhs -> [HsDecl] -> Term ()
 parseLambda patterns rhs whereDeclarations = 
-    foldr (\arg term -> AbstractionTerm {argName = arg, bodyTerm = term}) bodyTerm arguments
+    foldr (AbstractionTerm ()) bodyTerm arguments
         where
             arguments = map parseNamePattern patterns
             bodyTerm  = case whereDeclarations of
