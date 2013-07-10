@@ -32,16 +32,13 @@ showAnalysis annEnv tt = case tt of
         
         putStrLn $ "Left hand side type: " ++ (show $ annotation lhsTerm)
         putStrLn $ "Right hand side type: " ++ (show $ annotation rhsTerm)
-        
-        case typeAnn $ annotation lhsTerm of
-            Just var -> do
-                let annNames = lookupAnnNames var annEnv
-                
-                if null annNames
-                then putStrLn "Possible named functions: none"
-                else putStrLn $ "Possible named functions: " ++ (intercalate ", " annNames)
-            Nothing ->
-                putStrLn "Possible named functions: none"
+
+        let annNames
+                = maybe [] (\var -> lookupAnnNames var annEnv)
+                . typeAnn . annotation $ lhsTerm
+        if null annNames
+            then putStrLn "Possible named functions: none"
+            else putStrLn $ "Possible named functions: " ++ (intercalate ", " annNames)
         
         putStr "\n"
         
