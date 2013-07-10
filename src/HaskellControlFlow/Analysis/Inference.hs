@@ -6,6 +6,7 @@ module HaskellControlFlow.Analysis.Inference where
 import HaskellControlFlow.Calculus.Calculus
 import HaskellControlFlow.Calculus.Types
 
+import Data.Ord
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -277,31 +278,36 @@ solveAnnConstraints = foldr go (AnnEnv M.empty M.empty)
         in AnnEnv newNames substitutions
     
     SubstituteConstraint lhs rhs ->
-        let
-            realLhs = cannonicalVarName lhs substitutions
-            realRhs = cannonicalVarName rhs substitutions
+        let compareAnn lhs_ rhs_
+              = let realLhs_ = cannonicalVarName lhs_ substitutions
+                    realRhs_ = cannonicalVarName rhs_ substitutions
+                in case () of
+                    _ | realLhs_ == realRhs_ -> EQ
+                    _ | Just _ <- M.lookup realLhs_ allNames -> GT
+                    _ -> LT
 
-            insertSubstitution first second = 
-                case M.lookup lhs substitutions of
+            insertSubstitution lhs_ rhs_
+              = let realLhs_ = cannonicalVarName lhs_ substitutions
+                    realRhs_ = cannonicalVarName rhs_ substitutions
+                in case M.lookup lhs_ substitutions of
                         Just _ ->
                             -- Let's merge these two.
                             let
-                                lhsNames    = M.findWithDefault S.empty realLhs allNames
-                                rhsNames    = M.findWithDefault S.empty realRhs allNames
+                                lhsNames    = M.findWithDefault S.empty realLhs_ allNames
+                                rhsNames    = M.findWithDefault S.empty realRhs_ allNames
                                 unionNames  = lhsNames `S.union` rhsNames
-                                newAllNames = M.insert realLhs unionNames $ M.delete realRhs allNames
-                                newSubstitutions = M.insert realRhs realLhs substitutions
+                                newAllNames = M.insert realLhs_ unionNames $ M.delete realRhs_ allNames
+                                newSubstitutions = M.insert realRhs_ realLhs_ substitutions
                             in
                                 AnnEnv newAllNames newSubstitutions
                         Nothing ->
                             -- Insert a new one.
-                            AnnEnv allNames (M.insert lhs realRhs substitutions)
+                            AnnEnv allNames (M.insert lhs_ realRhs_ substitutions)
 
-        in  if realLhs == realRhs
-            then AnnEnv allNames substitutions
-            else case M.lookup (cannonicalVarName lhs substitutions) allNames of
-                Just _  -> insertSubstitution rhs lhs
-                Nothing -> insertSubstitution lhs rhs
+        in case compareAnn lhs rhs of
+            EQ -> AnnEnv allNames substitutions
+            LT -> insertSubstitution lhs rhs
+            GT -> insertSubstitution rhs lhs
 
 -- | Normalizes a variable name.
 cannonicalVarName :: AnnVar -> M.Map AnnVar AnnVar -> AnnVar
