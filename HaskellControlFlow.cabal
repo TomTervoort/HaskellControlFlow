@@ -12,6 +12,8 @@ executable haskellcf
     build-depends:
         base ==4.6.*,
         containers ==0.5.*,
-        haskell-src ==1.0.*
+        haskell-src ==1.0.*,
+        transformers,
+        deepseq
     hs-source-dirs:     src
     ghc-options:        -Wall -auto-all
