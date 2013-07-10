@@ -20,13 +20,6 @@ type TySubst = Type -> Type
 -- | A type variable.
 type TyVar = Name
 
--- | Generator of fresh names for variables.
-newtype VarFactory = VarFactory Int
-
--- | Initialise a new fresh variable factory.
-initVarFactory :: VarFactory
-initVarFactory = VarFactory 0
-
 -- | Generate a fresh variable name.
 freshVar :: (Functor m, Fresh m Integer) => m Name
 freshVar = fmap (\n -> '$' : show (n :: Integer)) fresh
