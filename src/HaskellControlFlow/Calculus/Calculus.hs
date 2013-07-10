@@ -13,7 +13,7 @@ import Debug.Trace
 type CallGraph = [(Term (), Name, [Name])]
 
 -- | Terms.
-data Term a = ConstantTerm {annotation :: a, constant :: Constant}
+data Term a = LiteralTerm {annotation :: a, constant :: Literal}
             | VariableTerm {annotation :: a, varName :: Name}
             | ApplicationTerm {annotation :: a, lhsTerm :: Term a, rhsTerm :: Term a}
             | AbstractionTerm {annotation :: a, argName :: Name, bodyTerm :: Term a}
@@ -34,11 +34,16 @@ data NamedTerm a = NamedTerm {name :: Name, term :: Term a}
                    deriving (Show)
 
 -- | Constants.
-data Constant = IntegerConst Integer
-              | DoubleConst Rational
-              | StringConst String
-              | CharConst Char
-                deriving (Show)
+data Literal = IntegerLit Integer
+             | RationalLit Rational
+             | StringLit String
+             | CharLit Char
+
+instance Show Literal where
+    show (IntegerLit x) = show x
+    show (RationalLit x) = show (fromRational x :: Double)
+    show (StringLit x) = show x
+    show (CharLit x) = show x
 
 -- | Abstraction name.
 type Name = String
@@ -46,8 +51,8 @@ type Name = String
 -- | Replaces the annotations on a term.
 replaceAnnotation :: (a -> b) -> Term a -> Term b
 replaceAnnotation f t = case t of
-    ConstantTerm {annotation = ann} ->
-        ConstantTerm {annotation = f ann
+    LiteralTerm {annotation = ann} ->
+        LiteralTerm {annotation = f ann
                      ,constant   = constant t}
     
     VariableTerm {annotation = ann} ->
@@ -91,7 +96,7 @@ replaceVar :: Name -> Term a -> Term a -> Term a
 replaceVar from to = rep
  where rep t = 
         case t of
-         ConstantTerm ann c                          -> ConstantTerm ann c
+         LiteralTerm ann c                           -> LiteralTerm ann c
          VariableTerm ann v              | v == from -> to
                                          | otherwise -> VariableTerm ann v
          ApplicationTerm ann l r                     -> ApplicationTerm ann (rep l) (rep r)
@@ -113,7 +118,7 @@ makeCallGraph :: [NamedTerm ()] -> CallGraph
 makeCallGraph = map (\(NamedTerm n t) -> (t, n, names t))
  where names t = 
         case t of
-         ConstantTerm _ _ -> []
+         LiteralTerm _ _ -> []
          VariableTerm _ n -> [n]
          ApplicationTerm _ l r -> names l ++ names r
          AbstractionTerm _ n b -> removeAll n $ names b -- Do not include the scoped variable.

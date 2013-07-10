@@ -14,7 +14,7 @@ formatTerm term = (formatTermHelper term "") ++ "\n"
 -- | Formats a term helper.
 formatTermHelper :: Term a -> String -> String
 formatTermHelper term indentation = case term of
-    ConstantTerm {constant = constant} ->
+    LiteralTerm {constant = constant} ->
         formatConstant constant
     VariableTerm {varName = varName} ->
         varName
@@ -41,12 +41,12 @@ formatNamedTerm NamedTerm {name = name, term = term} indentation =
     "\n" ++ indentation ++ name ++ " = " ++ formatTermHelper term ('\t' : indentation)
 
 -- Formats a constant.
-formatConstant :: Constant -> String
+formatConstant :: Literal -> String
 formatConstant constant = case constant of
-    IntegerConst integer -> show integer
-    DoubleConst rational -> show rational
-    StringConst string   -> show string
-    CharConst char       -> show char
+    IntegerLit integer -> show integer
+    RationalLit rational -> show rational
+    StringLit string   -> show string
+    CharLit char       -> show char
 
 formatPattern :: Pattern -> String
 formatPattern (Variable name) = name

@@ -123,10 +123,10 @@ parseExpression expr = case expr of
 -- | Parses a literal (constant) value.
 parseLiteral :: HsLiteral -> Term ()
 parseLiteral literal = case literal of
-    HsChar char	    -> ConstantTerm {constant = CharConst char}
-    HsString string	-> ConstantTerm {constant = StringConst string}
-    HsInt integer   -> ConstantTerm {constant = IntegerConst integer}
-    HsFrac rational	-> ConstantTerm {constant = DoubleConst rational}
+    HsChar char	    -> LiteralTerm {constant = CharLit char}
+    HsString string	-> LiteralTerm {constant = StringLit string}
+    HsInt integer   -> LiteralTerm {constant = IntegerLit integer}
+    HsFrac rational	-> LiteralTerm {constant = RationalLit rational}
     
     -- Unsuported features.
     _ -> error "Unboxed literals are not supported."

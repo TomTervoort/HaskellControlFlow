@@ -94,19 +94,19 @@ unifyAnnVars (Just a) (Just b) constraints = (SubstituteConstraint a b) : constr
 unifyAnnVars _        _        constraints = constraints
 
 -- | Provides the type of a constant literal.
-constantType :: Constant -> Type
+constantType :: Literal -> Type
 constantType c = case c of
-    IntegerConst _ -> BasicType Integer
-    DoubleConst  _ -> BasicType Double
-    CharConst    _ -> BasicType Char
-    StringConst  _ -> ListType (BasicType Char)
+    IntegerLit  _ -> BasicType Integer
+    RationalLit _ -> BasicType Double
+    CharLit     _ -> BasicType Char
+    StringLit   _ -> ListType (BasicType Char)
 
 -- | Implements algorithm W for type inference.
 algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term a ->
     m (Term Type, TySubst, AnnConstraints)
 algorithmW defs env constraints term = case term of
-    ConstantTerm _ c ->
-         return (ConstantTerm {annotation = (constantType c), constant = constant term}, id, constraints)
+    LiteralTerm _ c ->
+         return (LiteralTerm {annotation = (constantType c), constant = constant term}, id, constraints)
 
     VariableTerm _ name -> 
         case M.lookup name env of

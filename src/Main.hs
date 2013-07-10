@@ -14,7 +14,7 @@ import Data.List
 -- | Walks over typed tree, and shows possible functions of applications.
 showAnalysis :: AnnEnv -> Term Type -> IO ()
 showAnalysis annEnv tt = case tt of
-    ConstantTerm {} ->
+    LiteralTerm {} ->
         return ()
         
     VariableTerm {} ->
