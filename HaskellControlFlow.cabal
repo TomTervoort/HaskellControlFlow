@@ -14,6 +14,7 @@ executable haskellcf
         containers ==0.5.*,
         haskell-src ==1.0.*,
         transformers,
-        deepseq
+        deepseq,
+        data-partition
     hs-source-dirs:     src
     ghc-options:        -Wall -auto-all
