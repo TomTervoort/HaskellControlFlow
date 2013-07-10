@@ -5,8 +5,6 @@ module HaskellControlFlow.Calculus.Formatter (formatTerm) where
 import Data.List (intercalate)
 import HaskellControlFlow.Calculus.Calculus
 
-import Data.List
-
 -- | Formats a term.
 formatTerm :: Term a -> String
 formatTerm term = (formatTermHelper term "") ++ "\n"
@@ -23,15 +21,23 @@ formatTermHelper term indentation = case term of
     ApplicationTerm _ lhsTerm rhsTerm ->
         '(' : formatTermHelper lhsTerm indentation ++ ' ' : (formatTermHelper rhsTerm indentation) ++ ")"
     AbstractionTerm _ argName bodyTerm ->
-        '\\' : argName ++ " -> " ++ formatTermHelper bodyTerm indentation
+        let (argNames_, innerTerm) = fetchAbstractions bodyTerm
+            argNames = argName : argNames_
+        in '\\' : intercalate " " argNames ++ " -> " ++ formatTermHelper innerTerm indentation
     LetInTerm _ binder letTerm inTerm ->
         "\n" ++ indentation ++ "let" ++ formatNamedTerm binder letTerm ('\t' : indentation) ++
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTermHelper inTerm ('\t' : indentation)
     CaseTerm _ scrutinee alternatives ->
         "\n" ++ indentation ++ "case " ++ formatTermHelper scrutinee indentation ++ " of"
         ++ concatMap (\(patt, expr) -> "\n\t" ++ indentation ++ formatPattern patt ++ " -> " ++ formatTermHelper expr ('\t' : indentation)) alternatives
-    FixTerm _ term ->
-        "fix (" ++ formatTermHelper term "" ++ ")"
+    FixTerm _ t ->
+        "fix (" ++ formatTermHelper t "" ++ ")"
+
+fetchAbstractions :: Term a -> ([Name], Term a)
+fetchAbstractions t = go $ ([], t)
+  where
+    go (ns, AbstractionTerm _ n term) = go (n:ns, term)
+    go (ns, term) = (reverse ns, term)
 
 -- Formats a named term.
 formatNamedTerm :: Name -> Term a -> String -> String
