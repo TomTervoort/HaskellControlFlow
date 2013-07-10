@@ -59,10 +59,10 @@ parseDeclaration declaration = case declaration of
 parseExpression :: HsExp -> Term ()
 parseExpression expr = case expr of    
     HsVar name ->
-        VariableTerm () $ parseQName name
+        parseExpVar name
         
     HsCon name ->
-        VariableTerm () $ parseQName name
+        parseExpVar name
     
     HsLit literal ->
         parseLiteral literal
@@ -143,6 +143,18 @@ parseQName qName = case qName of
     -- Unsuported features.
     Qual _ _  -> error "Qualified names are not supported."
     Special c -> error "Special constructors are not supported."
+
+-- | Parses a bare qualified name as used in an expression.
+parseExpVar :: HsQName -> Term ()
+parseExpVar qname_ = case qname_ of
+    UnQual name -> VariableTerm () $ parseName name
+    Qual _ _ -> error "Qualified names are not supported."
+    Special HsUnitCon -> HardwiredTerm () (HwTupleCon 0)
+    Special (HsTupleCon n) -> HardwiredTerm () (HwTupleCon n)
+    Special HsCons -> HardwiredTerm () HwListCons
+
+    Special HsListCon -> error "This should never happen (list type constructor in expression)."
+    Special HsFunCon -> error "This should never happen (function type constructor in expression)."
 
 -- | Parses a name.
 parseName :: HsName -> Name
