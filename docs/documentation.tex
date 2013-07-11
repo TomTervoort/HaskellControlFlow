@@ -291,10 +291,6 @@ might be very useful to the consumer of the analysis.
 A few aspects of our implementation might be considered warts:
 \begin{itemize}
 \item
-    We could have used a much nicer way to introduce fresh variables in our
-    implementation. At the time, implementing a \texttt{FreshT} monad
-    transformer seemed too much hassle.
-\item
     We might have been able to use a more applicative style of programming
     if we had separated type constraint generation and solving. However,
     we already had a straightforward implementation of \algow{} available.
