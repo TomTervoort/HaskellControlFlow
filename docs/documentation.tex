@@ -34,7 +34,7 @@
 \newcommand{\hsterm}[1]{%
     \setlength{\fboxsep}{3pt}%
     \setlength{\fboxrule}{0.2pt}%
-    \fbox{\texttt{#1}}}
+    \fbox{\texttt{\small #1}}}
 \renewcommand{\vec}[1]{\overline{#1}}
 
 \newcommand{\algow}{algorithm~$\mathcal{W}$}
@@ -89,20 +89,23 @@ assumption, we build a \texttt{Term} which expresses the value of this
 function:
 
 \begin{code}
-data Term = LiteralTerm     {literal :: Literal}
-          | VariableTerm    {varName :: Name}
-          | ApplicationTerm {lhsTerm :: Term, rhsTerm :: Term}
-          | AbstractionTerm {argName :: Name, bodyTerm :: Term}
-          | LetInTerm       {letTerm :: (Name, Term), inTerm :: Term}
-          | CaseTerm        {exprTerm :: Term, alts :: [(Pattern, Term)]}
-          | ListTerm        {terms :: [Term]}
-          | TupleTerm       {terms :: [Term]}
-          | FixTerm         {fixedTerm :: Term}
+data Term = LiteralTerm     Literal
+          | VariableTerm    Name
+          | HardwiredTerm   HardwiredValue
+          | ApplicationTerm Term Term
+          | AbstractionTerm Name Term
+          | LetInTerm       Name Term Term
+          | CaseTerm        Term [(Pattern, Term)]
+          | FixTerm         Term
 
 data Literal = IntegralLit Integer
              | FractionalLit Rational
              | StringLit String
              | CharLit Char
+
+data HardwiredValue = HwTupleCon Int 
+                    | HwListCons
+                    | HwListNil
 
 data Pattern = Variable Name
              | Pattern {ctorName :: Name, ctorArgs :: [Name]}
@@ -165,13 +168,17 @@ and simple recursive rules:
     {\Gamma \vdash \hsterm{LiteralTerm (FractionalLit \_)} : \hsterm{BasicType Double}}%
     {}
 \end{equation*}\begin{equation*}
-\infer[ListIntro]%
-    {\Gamma \vdash \hsterm{ListTerm \ensuremath{\vec{e}}} : \hsterm{ListType \ensuremath{a}}}%
-    {\forall e \in \vec{e}. \Gamma \vdash e : a}
+\infer[TupleConIntro]%
+    {\Gamma \vdash \hsterm{HardwiredTerm (HwTupleCon \ensuremath{n})} : \ldots}%
+    {}
 \end{equation*}\begin{equation*}
-\infer[TupleIntro]%
-    {\Gamma \vdash \hsterm{TupleTerm \ensuremath{\vec{e}}} : \hsterm{TupleType \ensuremath{\vec{a}}}}%
-    {\forall (e,a) \in \zip(\vec{e},\vec{a}). \Gamma \vdash e : a}
+\infer[ListConsIntro]%
+    {\Gamma \vdash \hsterm{HardwiredTerm HwListCons} : \hsterm{Arrow \_ \ensuremath{a} (Arrow \_ (ListType \ensuremath{a}) (ListType \ensuremath{a}))}}%
+    {}
+\end{equation*}\begin{equation*}
+\infer[ListNilIntro]%
+    {\Gamma \vdash \hsterm{HardwiredTerm HwListNil} : \hsterm{ListType \ensuremath{a}}}%
+    {}
 \end{equation*}
 
 Abstraction, application, and the fixed point combinator:
@@ -192,7 +199,7 @@ Abstraction, application, and the fixed point combinator:
 Declarations:
 \begin{align*}
 \infer[LetIn]%
-    {\Gamma \vdash \hsterm{LetInTerm (\ensuremath{x}, \ensuremath{e_1}) \ensuremath{e_0}} : \tau_0}%
+    {\Gamma \vdash \hsterm{LetInTerm \ensuremath{x} \ensuremath{e_1} \ensuremath{e_0}} : \tau_0}%
     {\Gamma \vdash e_1 : \tau_1 \qquad \Gamma [x : \tau_1] \vdash e_0 : \tau_0}
 \end{align*}
 
@@ -283,9 +290,6 @@ might be very useful to the consumer of the analysis.
 
 A few aspects of our implementation might be considered warts:
 \begin{itemize}
-\item
-    We treat lists and tuples as special types. A different approach might
-    have resulted in less redundant code (and get rid of two type rules).
 \item
     We could have used a much nicer way to introduce fresh variables in our
     implementation. At the time, implementing a \texttt{FreshT} monad
