@@ -149,6 +149,13 @@ For sake of space, we omit the rules for defining the environment and
 type instantiation.
 
 \subsubsection{Type rules for terms}
+Variables:
+\begin{equation*}
+\infer[Var]%
+    {\Gamma \vdash \hsterm{VariableTerm \ensuremath{x}} : \tau}
+    {\Gamma(x) = \tau}
+\end{equation*}
+
 The rules for the hardwired types (literals, lists, and tuples) are axioms
 and simple recursive rules:
 \begin{equation*}
