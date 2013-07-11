@@ -271,7 +271,13 @@ we can add a constraint $n \in \phi$.
 
 \subsection{Constraint solving}
 After \algow{} is done, we solve the constraints on the annotation variables
-separately.
+separately. First, we build a union-find structure to express the
+$\phi \equiv \phi'$ constraints. Then, for the $n \in \phi$ constraints,
+we build a mapping from the representatives of $\phi$ (as found in
+the union-find structure) to sets of related $n$ from the constraints.
+We end up with a map from representative annotation variables to minimal sets
+of function names, and a way to translate any annotation variable to its
+representative.
 
 \subsection{Output}
 Finally, we print the following information:
