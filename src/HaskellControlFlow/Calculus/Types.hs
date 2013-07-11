@@ -4,9 +4,7 @@ module HaskellControlFlow.Calculus.Types where
 
 import HaskellControlFlow.Calculus.Calculus
 
-import Data.Map (Map)
 import qualified Data.Map as M
-import qualified Data.Set as S
 import Data.List
 
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
@@ -58,7 +56,7 @@ data BasicType = Integer
 type AnnVar = Name
 
 -- | A type environment: a mapping from variable names to their inferred types.
-type TyEnv = Map Name Type
+type TyEnv = M.Map Name Type
 
 -- | Returns a possible type annotation.
 typeAnn :: Type -> Maybe AnnVar
@@ -106,7 +104,7 @@ boolDef = DataDef "Bool" [DataCon "True" [], DataCon "False" []]
 
 -- | Environment of user-defined data types. Also contains a mapping from constructor names to
 --   data definition names.
-data DataEnv = DataEnv {defs :: Map Name DataDef, conNameMap :: Map Name Name}
+data DataEnv = DataEnv {ddefs :: M.Map Name DataDef, conNameMap :: M.Map Name Name}
 
 -- | Initial environment containing solely the bool type.
 initEnv :: DataEnv
@@ -114,18 +112,18 @@ initEnv = addDataDef boolDef $ DataEnv M.empty M.empty
 
 -- | Look up the definition of a data type with a certain name.
 lookupDataDef :: Name -> DataEnv -> Maybe DataDef
-lookupDataDef n = M.lookup n . defs
+lookupDataDef n = M.lookup n . ddefs
 
 -- | Look up the data type which contains a constructor with a particular name, as well as the 
 --   types of the constructor arguments.
 lookUpConTypes :: Name -> DataEnv -> Maybe (Type, [Type])
 lookUpConTypes n env = do dname <- M.lookup n $ conNameMap env
-                          def   <- M.lookup dname $ defs env
+                          def   <- M.lookup dname $ ddefs env
                           con   <- find (\c -> conName c == n) $ ctors def
                           return (DataType dname, members con)
 
 -- | Add a data definition to the environment.
 addDataDef :: DataDef -> DataEnv -> DataEnv
-addDataDef def env = env {defs = M.insert dname def (defs env), conNameMap = addCons $ ctors def}
+addDataDef def env = env {ddefs = M.insert dname def (ddefs env), conNameMap = addCons $ ctors def}
  where dname = dataName def
        addCons cs = foldr (\(DataCon n _) -> (M.insert n dname .)) id cs $ conNameMap env

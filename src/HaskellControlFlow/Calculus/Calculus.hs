@@ -4,10 +4,8 @@ module HaskellControlFlow.Calculus.Calculus where
 
 import Control.Arrow
 import Data.Graph
-import Data.List
+import Data.List hiding (group)
 import Data.Maybe
-
-import Debug.Trace
 
 -- | Graph of mutual calls within a group of let's. The outgoing edge list may contain names that 
 --   are not present in the graph. These should be ignored.

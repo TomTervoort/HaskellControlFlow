@@ -7,7 +7,6 @@ import HaskellControlFlow.Calculus.Calculus
 import HaskellControlFlow.Calculus.Types
 import HaskellControlFlow.Analysis.CfaSolver
 
-import Data.Ord
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -42,7 +41,7 @@ freeEnvVars = S.unions . map (freeVars . snd) . M.assocs
 
 -- | Type generalisation. (TODO)
 gen :: TyEnv -> Type -> Type
-gen env ty = ty
+gen _ ty = ty
     -- For polymorphism: S.foldr Forall ty $ freeVars ty `S.difference` freeEnvVars env
 
 -- | Type instantiation. (TODO)
@@ -66,7 +65,7 @@ subTyVar from to = sub
 
 -- | Robinson's unification algorithm. Uses Monad 'fail' in case of a type error.
 unify :: Monad m => Type -> Type -> AnnConstraints -> m (TySubst, AnnConstraints)
-unify a b constraints = case (a, b) of
+unify a_ b_ constraints = case (a_, b_) of
     (TyVar a, TyVar b) | a == b -> return (id, constraints)
     (TyVar a1, t2)     | not $ a1 `S.member` freeVars t2 -> return (subTyVar a1 t2, constraints)
     (t1, TyVar a2)     | not $ a2 `S.member` freeVars t1 -> return (subTyVar a2 t1, constraints)
@@ -84,11 +83,11 @@ unify a b constraints = case (a, b) of
     (TupleType ts1, TupleType ts2) | length ts1 == length ts2 -> do
         foldM f (id, constraints) $ zip ts1 ts2
               where
-                  f (s1, constraints) (a, b) = do
-                      (s2, constraints1) <- unify a b constraints
-                      return (s2 . s1, constraints1)
+                  f (s1, cs) (a, b) = do
+                      (s2, cs') <- unify a b cs
+                      return (s2 . s1, cs')
     
-    _ -> fail $ concat ["Type error.\n\tExpected: '", show a, "'.\n\tActual: '", show b, "'."]
+    _ -> fail $ concat ["Type error.\n\tExpected: '", show a_, "'.\n\tActual: '", show b_, "'."]
 
 -- | Unifies annotation variables with constraints.
 unifyAnnVars :: Maybe AnnVar -> Maybe AnnVar -> AnnConstraints -> AnnConstraints
@@ -209,53 +208,15 @@ algorithmW defs env constraints term = case term of
     CaseTerm _ t1 patterns -> do
         (tt, s1, constaints1) <- algorithmW defs env constraints t1
         
-        (ty, s2, constaints2, typedAlts) <- handlePatterns (annotation tt, s1, constaints1) patterns
+        (ty, s2, constaints2, typedAlts) <- handlePatterns defs env (annotation tt, s1, constaints1) patterns
         
         let termType  = ty
         let typedTerm = CaseTerm termType tt typedAlts
         
         return (typedTerm, s2, constaints2)
-        
-        where
-            handlePatterns _ [] = fail "Empty case statement."
-            handlePatterns (ty1, s1, constraints) ((p@(Variable name), pTerm):_ ) = do
-                let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env
-                
-                (tt, s2, constraints1) <- algorithmW defs env1 constraints pTerm
-                
-                return (annotation tt, s2 . s1, constraints1, [(p, tt)])
 
-            handlePatterns (ty1, s1, constraints) ((p@(Pattern name args), pTerm):ps) =
-                 case lookUpConTypes name defs of
-                     Nothing         -> fail $ "Unknown constructor: " ++ name
-                     Just (cty, ats) -> do
-                         -- Unify expression type.
-                         (s2, constraints1) <- unify ty1 cty constraints
-                         
-                         -- Introduce constructor argument types.
-                         let s3   = foldr (.) id $ zipWith subTyVar args ats
-                         let env1 = foldr (uncurry M.insert) env $ zip args ats
-                         
-                         -- Infer term.
-                         let sx = s3 . s2 . s1
-                         
-                         let env2 = M.map sx env1
-                         
-                         (tt, s4, constraints2) <- algorithmW defs env2 constraints1 pTerm
-                         (ty3, s5, constraints3, typedAlts) <-
-                             if null ps 
-                             then return (annotation tt, id, constraints2, []) 
-                             else handlePatterns (ty1, id, constraints2) ps
-                         
-                         -- Unify types of different terms.
-                         (s6, constraints4) <- unify (annotation tt) ty3 constraints3
-                         
-                         -- Done.
-                         let sy = s6 . s5 . s4 . sx
-                         return (sy (annotation tt), sy, constraints4, (p, tt) : typedAlts)
-
-    FixTerm _ term -> do
-        (fty, s, c1) <- algorithmW defs env constraints term
+    FixTerm _ t -> do
+        (fty, s, c1) <- algorithmW defs env constraints t
         
         -- The fixed term should be of type a -> a for some a. After applying the fix operator, the 
         -- resulting type will be a.
@@ -268,48 +229,88 @@ algorithmW defs env constraints term = case term of
         
         return (typedTerm, s1 . s, c2)
 
+handlePatterns :: (Monad m, Functor m, Fresh m Integer)
+    => DataEnv -> M.Map Name Type -> (Type, Type -> Type, AnnConstraints) -> [(Pattern, Term a)]
+    -> m (Type, Type -> Type, AnnConstraints, [(Pattern, Term Type)])
+handlePatterns _ _ _ [] = fail "Empty case statement."
+handlePatterns defs env (ty1, s1, constraints) ((p@(Variable name), pTerm):_ ) = do
+    let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) ty1) env
+    
+    (tt, s2, constraints1) <- algorithmW defs env1 constraints pTerm
+    
+    return (annotation tt, s2 . s1, constraints1, [(p, tt)])
+
+handlePatterns defs env (ty1, s1, constraints) ((p@(Pattern name args), pTerm):ps) =
+     case lookUpConTypes name defs of
+         Nothing         -> fail $ "Unknown constructor: " ++ name
+         Just (cty, ats) -> do
+             -- Unify expression type.
+             (s2, constraints1) <- unify ty1 cty constraints
+             
+             -- Introduce constructor argument types.
+             let s3   = foldr (.) id $ zipWith subTyVar args ats
+             let env1 = foldr (uncurry M.insert) env $ zip args ats
+             
+             -- Infer term.
+             let sx = s3 . s2 . s1
+             
+             let env2 = M.map sx env1
+             
+             (tt, s4, constraints2) <- algorithmW defs env2 constraints1 pTerm
+             (ty3, s5, constraints3, typedAlts) <-
+                 if null ps 
+                 then return (annotation tt, id, constraints2, []) 
+                 else handlePatterns defs env (ty1, id, constraints2) ps
+             
+             -- Unify types of different terms.
+             (s6, constraints4) <- unify (annotation tt) ty3 constraints3
+             
+             -- Done.
+             let sy = s6 . s5 . s4 . sx
+             return (sy (annotation tt), sy, constraints4, (p, tt) : typedAlts)
+
 -- | Updates a type environment with the type signatures for constructors used within a DataEnv so 
 --   those can be treated as functions.
 constructorTypes :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> m (TyEnv, AnnConstraints)
-constructorTypes dataEnv env constraints = do
-    let dataDefs = map snd $ M.assocs $ defs dataEnv
+constructorTypes dataEnv env_ constraints_ = do
+    let dataDefs = map snd $ M.assocs $ ddefs dataEnv
     
-    foldM addDataDefs (env, constraints) dataDefs
+    foldM addDataDefs (env_, constraints_) dataDefs
         where
-            addDataDefs (env, constraints) (DataDef defName ctors) = do
-                (env1, constraints1, _) <- foldM addDataCons (env, constraints, defName) ctors
+            addDataDefs (env, constraints) (DataDef dName cs) = do
+                (env1, constraints1, _) <- foldM addDataCons (env, constraints, dName) cs
                 return (env1, constraints1)
                 
-            addDataCons (env, constraints, defName) (DataCon conName members) = do
+            addDataCons (env, constraints, dName) (DataCon cName args) = do
                 a1 <- freshVar
                 
-                let constraints1 = (InclusionConstraint a1 conName) : constraints
+                let constraints1 = (InclusionConstraint a1 cName) : constraints
                 
-                let ty   = constructType (Just a1) defName members
-                let env1 = M.insert conName ty env
+                let ty   = constructType (Just a1) dName args
+                let env1 = M.insert cName ty env
                 
-                return (env1, constraints1, defName)
+                return (env1, constraints1, dName)
                 
-            constructType var defName (m:ms) = Arrow var m (constructType Nothing defName ms)
-            constructType _   defName []     = DataType defName
+            constructType var dName (m:ms) = Arrow var m (constructType Nothing dName ms)
+            constructType _   dName []     = DataType dName
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
 inferPrincipalType :: (Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
-inferPrincipalType term dataTypes = fmap fst (runFreshT (inferPrincipalType' term dataTypes) (0 :: Integer))
+inferPrincipalType term denv = fmap fst (runFreshT (inferPrincipalType' term denv) (0 :: Integer))
 
 
 inferPrincipalType' :: (Fresh m Integer, Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
-inferPrincipalType' term dataTypes = do
+inferPrincipalType' term denv = do
     let constraints = []
     -- TODO initialize (Fresh m Integer, Fresh m AnnVar) here
     let env         = initTyEnv
     
-    (env1, constraints1) <- constructorTypes dataTypes env constraints
+    (env1, constraints1) <- constructorTypes denv env constraints
     
-    (tt, s, constraints) <- algorithmW dataTypes env1 constraints1 term
+    (tt, s, constraints2) <- algorithmW denv env1 constraints1 term
     
     let newEnv = M.map s env
     
-    return (gen newEnv $ annotation tt, fmap s tt, solveAnnConstraints constraints)
+    return (gen newEnv $ annotation tt, fmap s tt, solveAnnConstraints constraints2)

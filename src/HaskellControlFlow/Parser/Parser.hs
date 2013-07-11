@@ -9,7 +9,6 @@ import Language.Haskell.Parser
 import Language.Haskell.Syntax
 
 import Data.Either
-import Data.Maybe
 
 -- | Parses a haskell file.
 parseHaskellFile :: FilePath -> IO (HaskellProgram ())
@@ -87,17 +86,17 @@ parseExpression expr = case expr of
     HsParen subExpr          -> parseExpression subExpr
     HsExpTypeSig _ subExpr _ -> parseExpression subExpr
     
-    HsInfixApp l op r -> 
-        ApplicationTerm () (ApplicationTerm () (parseOperator op) (parseExpression l))
-                           (parseExpression r)
+    HsInfixApp lhs op rhs -> 
+        ApplicationTerm () (ApplicationTerm () (parseOperator op) (parseExpression lhs))
+                           (parseExpression rhs)
 
-    HsLeftSection exp op  -> ApplicationTerm () (parseOperator op) (parseExpression exp)
+    HsLeftSection lhs op  -> ApplicationTerm () (parseOperator op) (parseExpression lhs)
     
     HsNegApp subExpr -> 
         ApplicationTerm () (VariableTerm () "negate") $ parseExpression subExpr
 
-    HsCase expr alternatives -> 
-     CaseTerm () (parseExpression expr) (map parseCaseAlternative alternatives)
+    HsCase scrutinee alternatives -> 
+     CaseTerm () (parseExpression scrutinee) (map parseCaseAlternative alternatives)
 
     HsTuple values -> 
      let acc `noc` x = ApplicationTerm () acc x
@@ -142,7 +141,7 @@ parseQName qName = case qName of
 
     -- Unsuported features.
     Qual _ _  -> error "Qualified names are not supported."
-    Special c -> error "Special constructors are not supported."
+    Special _ -> error "Special constructors are not supported."
 
 -- | Parses a bare qualified name as used in an expression.
 parseExpVar :: HsQName -> Term ()

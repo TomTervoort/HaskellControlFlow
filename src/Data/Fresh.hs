@@ -1,15 +1,12 @@
 {-# LANGUAGE Haskell2010 #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 -- Largely stolen from StateT.
 module Data.Fresh where
 
-import Control.Applicative
-import Control.Arrow
 import Control.DeepSeq
-import Control.Monad
 import Control.Monad.Trans.State
 
 class {- (Applicative m, Eq v) => -} Fresh m v | m -> v where
