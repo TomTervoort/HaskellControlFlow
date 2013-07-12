@@ -14,7 +14,7 @@ data HaskellProgram a = HaskellProgram {dataTypes :: DataEnv, topExpr :: Term a}
 -- | A Haskell type. May also contain function type annotations or type variables.
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
 --   subset of Haskell we support, they are considered as special cases.
-data Type = BasicType BasicType
+data Type = BasicType (Maybe AnnVar) BasicType
           | DataType (Maybe AnnVar) Name
           | ListType (Maybe AnnVar) Type
           | TupleType (Maybe AnnVar) [Type]
@@ -24,7 +24,7 @@ data Type = BasicType BasicType
           deriving Eq
 
 instance Show Type where
-    showsPrec n (BasicType k) = showsPrec n k
+    showsPrec n (BasicType _ k) = showsPrec n k
     showsPrec _ (DataType _ k) = (k++)
     showsPrec _ (ListType _ ty)
         = ("["++)
@@ -42,7 +42,7 @@ instance Show Type where
         . ((if n > 0 then ")" else "")++)
     showsPrec _ (TyVar k) = (k++)
 
--- | A few build-in types.
+-- | A few built-in types.
 data BasicType = Integer
                | Char
                | Double
@@ -62,28 +62,30 @@ typeAnn _                 = Nothing
 -- | Gives the type with a certain name. Either returns a basic type if the String equals "Integer",
 --   "Char" or "Double"; or considers the type to be a custom data type.
 typeFromName :: String -> Type
-typeFromName "Int"     = BasicType Integer
-typeFromName "Integer" = BasicType Integer
-typeFromName "Char"    = BasicType Char
-typeFromName "Double"  = BasicType Double
+typeFromName "Integer" = BasicType Nothing Integer
+typeFromName "Char"    = BasicType Nothing Char
+typeFromName "Double"  = BasicType Nothing Double
 typeFromName datatype  = DataType Nothing datatype
 
 -- | An environment of types of some standard functions with which basic types can be manipulated.
 initTyEnv :: TyEnv
 initTyEnv = M.fromList stdOps
  where stdOps = [
-                   ("negate"       , BasicType Integer .> BasicType Integer)
-                 , ("+"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
-                 , ("-"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
-                 , ("*"            , BasicType Integer .> BasicType Integer .> BasicType Integer)
-                 , ("div"          , BasicType Integer .> BasicType Integer .> BasicType Integer)
-                 , ("ord"          , BasicType Char    .> BasicType Integer)
-                 , ("chr"          , BasicType Integer .> BasicType Char   )
-                 , ("round"        , BasicType Double  .> BasicType Integer)
-                 , ("fromIntegral" , BasicType Integer .> BasicType Double )
-                 , ("/"            , BasicType Double  .> BasicType Double  .> BasicType Double )
+                   ("negate"       , integer .> integer)
+                 , ("+"            , integer .> integer .> integer)
+                 , ("-"            , integer .> integer .> integer)
+                 , ("*"            , integer .> integer .> integer)
+                 , ("div"          , integer .> integer .> integer)
+                 , ("ord"          , char    .> integer)
+                 , ("chr"          , integer .> char   )
+                 , ("round"        , double  .> integer)
+                 , ("fromIntegral" , integer .> double )
+                 , ("/"            , double  .> double  .> double )
                 ]
        a .> b = Arrow Nothing False a b
+       integer  = BasicType Nothing Integer
+       char     = BasicType Nothing Char
+       double   = BasicType Nothing Double
        infixr 3 .>
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 

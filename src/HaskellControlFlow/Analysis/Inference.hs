@@ -70,7 +70,7 @@ unify a_ b_ constraints = case (a_, b_) of
     (TyVar a, TyVar b) | a == b -> return (id, constraints)
     (TyVar a1, t2)     | not $ a1 `S.member` freeVars t2 -> return (subTyVar a1 t2, constraints)
     (t1, TyVar a2)     | not $ a2 `S.member` freeVars t1 -> return (subTyVar a2 t1, constraints)
-    (BasicType x, BasicType y) | x == y -> return (id, constraints)
+    (BasicType xn x, BasicType yn y) | x == y -> return (id, unifyAnnVars xn yn constraints)
     (DataType xn x, DataType yn y)   | x == y -> return (id, unifyAnnVars xn yn constraints)
     (ListType xn t1, ListType yn t2)          -> unify t1 t2 (unifyAnnVars xn yn constraints)
     (Arrow a1 _ t11 t12, Arrow a2 _ t21 t22) -> do
@@ -96,17 +96,32 @@ unifyAnnVars (Just a) (Just b) constraints = (SubstituteConstraint a b) : constr
 unifyAnnVars _        _        constraints = constraints
 
 -- | Provides the type of a constant literal.
-constantType :: Literal -> Type
+constantType :: (Functor m, Monad m, Fresh m Integer) => Literal -> m (Type, AnnConstraints)
 constantType c = case c of
-    IntegerLit  _ -> BasicType Integer
-    RationalLit _ -> BasicType Double
-    CharLit     _ -> BasicType Char
-    StringLit   _ -> ListType Nothing (BasicType Char)
+    IntegerLit  n -> do
+        ann <- freshVar
+        let annText = ShallowName $ show n
+        return $ (BasicType (Just ann) Integer, [InclusionConstraint ann annText])
+    RationalLit n -> do
+        ann <- freshVar
+        let annText = ShallowName $ show n
+        return $ (BasicType (Just ann) Double, [InclusionConstraint ann annText])
+    CharLit     n -> do
+        ann <- freshVar
+        let annText = ShallowName $ show n
+        return $ (BasicType (Just ann) Char, [InclusionConstraint ann annText])
+    StringLit   n -> do
+        ann1 <- freshVar
+        ann2 <- freshVar
+        let annText = ShallowName $ show n
+        return $ (ListType (Just ann1) (BasicType (Just ann2) Char), [InclusionConstraint ann1 annText, InclusionConstraint ann2 annText])
 
 refreshDataAnnotations :: (Functor m, Monad m, Fresh m Integer) => Type -> m Type
 refreshDataAnnotations = go
   where
-    go (BasicType bt) = return $ BasicType bt
+    go (BasicType ann bt) = do
+        ann' <- freshVar
+        return $ BasicType (Just $ fromMaybe ann' ann) bt
     go (DataType ann nm) = do
         ann' <- freshVar
         return $ DataType (Just $ fromMaybe ann' ann) nm
@@ -127,7 +142,7 @@ refreshDataAnnotations = go
 
 plugConstructorAnnotation :: AnnVar -> Type -> Type
 plugConstructorAnnotation var ty_ = case ty_ of
-    BasicType _ -> ty_
+    BasicType _ bt -> BasicType (Just var) bt
     DataType _ nm -> DataType (Just var) nm
     ListType _ ty -> ListType (Just var) ty
     TupleType _ ty -> TupleType (Just var) ty
@@ -138,8 +153,9 @@ plugConstructorAnnotation var ty_ = case ty_ of
 algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term (NameAdornment, Type) ->
     m (Term Type, TySubst, AnnConstraints)
 algorithmW defs env constraints term = case term of
-    LiteralTerm _ c ->
-         return (constantType c <$ term, id, constraints)
+    LiteralTerm _ c -> do
+        (ty, cs) <- constantType c
+        return (ty <$ term, id, cs ++ constraints)
 
     VariableTerm (enName, _) True name | Just ty <- M.lookup name env -> do
         dataAnn <- freshVar
