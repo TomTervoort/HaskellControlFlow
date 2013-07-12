@@ -4,11 +4,8 @@ module HaskellControlFlow.Calculus.Types where
 
 import HaskellControlFlow.Calculus.Calculus
 
-import Control.Applicative
-import Control.Worklist
 import qualified Data.Map as M
 import Data.List
-import Data.Maybe
 
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
 --   expression (all functions are nested let expressions) and a collection of defined data types.
@@ -28,7 +25,7 @@ data Type = BasicType BasicType
 
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
-    showsPrec _ (DataType x k) = (k++)
+    showsPrec _ (DataType _ k) = (k++)
     showsPrec _ (ListType _ ty)
         = ("["++)
         . showsPrec 0 ty
