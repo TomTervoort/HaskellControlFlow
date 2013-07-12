@@ -106,6 +106,7 @@ constantType c = case c of
 refreshDataAnnotations :: (Functor m, Monad m, Fresh m Integer) => Type -> m Type
 refreshDataAnnotations = go
   where
+    go (BasicType bt) = return $ BasicType bt
     go (DataType ann nm) = do
         ann' <- freshVar
         return $ DataType (Just $ fromMaybe ann' ann) nm
@@ -140,9 +141,6 @@ algorithmW defs env constraints term = case term of
     LiteralTerm _ c ->
          return (constantType c <$ term, id, constraints)
 
-    VariableTerm (enName, _) _ name | Nothing <- M.lookup name env ->
-        fail $ "Not in scope: '" ++ name ++ "'."
-
     VariableTerm (enName, _) True name | Just ty <- M.lookup name env -> do
         dataAnn <- freshVar
         let dataAnnC = [InclusionConstraint dataAnn enName]
@@ -157,9 +155,14 @@ algorithmW defs env constraints term = case term of
 
         return (ty'' <$ term, id, constraints')
 
-    VariableTerm (enName, _) False name | Just ty <- M.lookup name env -> do
+    VariableTerm _ False name | Just ty <- M.lookup name env -> do
         ty' <- refreshDataAnnotations ty
         return (ty' <$ term, id, constraints)
+
+    VariableTerm _ _ name | Nothing <- M.lookup name env ->
+        fail $ "Not in scope: '" ++ name ++ "'."
+
+    VariableTerm _ _ _ -> error "This should not occur (pacifier for lacking GHC exhaustiveness checker)."
 
     HardwiredTerm (enName, _enType) (HwTupleCon n) -> do
         argTypes <- map TyVar <$> replicateM n freshVar
@@ -187,7 +190,7 @@ algorithmW defs env constraints term = case term of
 
         return (termType' <$ term, id, dataAnnC ++ constraints')
 
-    HardwiredTerm (enName, _enType) HwListCons -> do
+    HardwiredTerm _ HwListCons -> do
         ty <- TyVar <$> freshVar
         ann1 <- freshVar
         ann2 <- freshVar
