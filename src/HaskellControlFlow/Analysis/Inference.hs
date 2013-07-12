@@ -238,21 +238,16 @@ algorithmW defs env constraints term = case term of
 
     AbstractionTerm (enName, _enType) name t1 -> do
         a1 <- TyVar <$> freshVar
+        ann <- freshVar
 
         let env1 = M.insert name a1 env
         
         (tt1, s, constraints1) <- algorithmW defs env1 constraints t1
-        
-        -- TODO Hack, because I don't want to change phi just yet.
-        let enName' = case enName of
-                ShallowName x -> Just x
-                DeepName x -> Just $ "{inside " ++ x ++ "}"
-                HereBeDragons -> Nothing
-        
-        let termType  = Arrow enName' False (s a1) (annotation tt1)
+
+        let termType  = Arrow (Just ann) False (s a1) (annotation tt1)
         let typedTerm = AbstractionTerm termType name tt1
         
-        return (typedTerm, s, constraints1)
+        return (typedTerm, s, InclusionConstraint ann enName : constraints1)
 
     ApplicationTerm (enName, _enType) t1 t2 -> do
         a1 <- TyVar <$> freshVar

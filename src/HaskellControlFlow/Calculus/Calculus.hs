@@ -129,16 +129,16 @@ deeperName x = x
 adornWithNames :: Term a -> Term (NameAdornment, a)
 adornWithNames = go HereBeDragons
   where
-    go name term_ = case term_ of
+    go name_ term_ = let name = deeperName name_ in case term_ of
         -- TODO where to apply deeperName?
-        LiteralTerm     ann c       -> LiteralTerm (name, ann) c
-        VariableTerm    ann c n     -> VariableTerm (name, ann) c n
-        HardwiredTerm   ann h       -> HardwiredTerm (name, ann) h
-        ApplicationTerm ann lhs rhs -> ApplicationTerm (name, ann) (go name lhs) (go name rhs)
-        AbstractionTerm ann bnd trm -> AbstractionTerm (name, ann) bnd (go (deeperName name) trm)
-        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (name, ann) bnd (go (ShallowName bnd) tm1) (go name tm2)
-        CaseTerm        ann scr mtc -> CaseTerm (name, ann) (go name scr) (fmap (second (go name)) mtc)
-        FixTerm         ann trm     -> FixTerm (name, ann) (go name trm)
+        LiteralTerm     ann c       -> LiteralTerm (name_, ann) c
+        VariableTerm    ann c n     -> VariableTerm (name_, ann) c n
+        HardwiredTerm   ann h       -> HardwiredTerm (name_, ann) h
+        ApplicationTerm ann lhs rhs -> ApplicationTerm (name_, ann) (go name lhs) (go name rhs)
+        AbstractionTerm ann bnd trm -> AbstractionTerm (name_, ann) bnd (go (deeperName name) trm)
+        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (name_, ann) bnd (go (ShallowName bnd) tm1) (go name tm2)
+        CaseTerm        ann scr mtc -> CaseTerm (name_, ann) (go name scr) (fmap (second (go name)) mtc)
+        FixTerm         ann trm     -> FixTerm (name_, ann) (go name trm)
 
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
 replaceVar :: Name -> Term a -> Term a -> Term a

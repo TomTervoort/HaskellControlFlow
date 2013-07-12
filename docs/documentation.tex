@@ -343,12 +343,70 @@ Finally, we print the following information:
 
 \section{Examples}
 
-% TODO Walkthrough.
+To run the analysis on a source file, use \texttt{cabal} to build
+the executable \texttt{haskellcf}, and then execute it with the file of
+interest as its only argument.
+
+The output is structured according to a depth-first search through the AST,
+searching for function applications and case statements.
+
+\subsection{\texttt{examples/ternary.hs}}
+
+This file defines some basic balanced ternary arithmetic functions.
+
+In the analysis results, the first three data analysis results (identified
+by the record starting with ``Scrutinee'') are quite telling for how our
+analysis works:
+\begin{itemize}
+\item
+    The first record refers to the case statement in \texttt{negate},
+    scrutinizing its only argument. According to our analysis, it might have
+    been created somewhere inside \texttt{main}, \texttt{add}, \texttt{multiply}
+    or \texttt{negate}.
+
+    This is a pretty useless result, caused by the call to \texttt{negate}
+    from \texttt{multiply}. Somehow, the functions inside \texttt{multiply}
+    are contaminating the constraint pool with useless information, and the
+    call to \texttt{negate} in \texttt{multiply} infects this result.
+\item
+    The second record refers to the case statement in \texttt{multiply},
+    scrutinizing its first argument. The analysis says that it might
+    be \texttt{main}, which is correct: it can only be \texttt{Neg}.
+\item
+    The third record refers to the case statement in \texttt{add},
+    scrutinizing its first argument. The analysis did not find any
+    possible creation sites, because \texttt{add} is dead code, along with
+    \texttt{subtract}.
+\end{itemize}
+
+Besides the strange one from \texttt{multiply}, the analysis results are
+be straigtforward: function $f$ can only be function $f$, and after partial
+applicaiton, you are `inside` function $f$.
+
+\subsection{\texttt{examples/church-booleans.hs}}
+
+This file defines Church-encoded booleans.
+
+The results are not entirely remarkable, and due to our monomorpishm,
+the truth value of \texttt{main} can't be derived from its underlying type
+(it's $a \rightarrow a \rightarrow a$, instead of something useful like
+$a \rightarrow b \rightarrow a$, meaning `true', or $b \rightarrow a \rightarrow a$,
+meaning `false'). However, also because we have monomorphism, our function type
+annotations can show us exactly what the only possible values for sub-expressions
+are inside the combinators. The nicest record comes from an application inside
+\texttt{and}:
+
+\begin{verbatim}
+Left hand side: (lhs ((rhs t) f))
+Right hand side: f
+Left hand side type: $96 -> $96
+Right hand side type: $96
+Possible named functions: {inside true}
+\end{verbatim}
 
 \section{Discussion and conclusion}
-Our analysis of this subset of Haskell seems to perform reasonably well.
-The output of our program is quite cumbersome to read, but it should be
-doable.
+Our analysis of this subset of Haskell seems to perform moderately. The output
+of our program is quite cumbersome to read, but it should be doable.
 
 Our implementation has a few warts:
 \begin{itemize}
@@ -370,6 +428,21 @@ Our implementation has a few warts:
     Type-wise, the code is messy. There is very little distinction
     between names in terms and types, and no distinction between
     annotations on functions and annotations on data types.
+\end{itemize}
+
+There are also some missing features. 
+\begin{itemize}
+\item
+    For instance, user-defined constructors do not have annotations on the entire
+    `spine' of their function type, and as such, after partial application, they
+    do not show up in the CFA result. This in contrast to the family of tuple
+    constructors, where for instance the function \texttt{(,,,) x} is known to be
+    an `inside' function of the constructor.
+\item
+    The results of the analysis can be quite redundant, mentioning that a named
+    function might be itself. Look for instance at \texttt{examples/useless.hs},
+    where the only result is that ``\texttt{id} is possibly the named function
+    \texttt{id}''.
 \end{itemize}
 
 To support polymorphism, we would have to change a few things about our analysis,
