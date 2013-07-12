@@ -297,12 +297,8 @@ constructorTypes dataEnv env_ constraints_ = do
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: (Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
-inferPrincipalType term denv = fmap fst (runFreshT (inferPrincipalType' term denv) (0 :: Integer))
-
-
-inferPrincipalType' :: (Fresh m Integer, Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
-inferPrincipalType' term denv = do
+inferPrincipalType :: (Fresh m Integer, Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
+inferPrincipalType term denv = do
     let constraints = []
     -- TODO initialize (Fresh m Integer, Fresh m AnnVar) here
     let env         = initTyEnv

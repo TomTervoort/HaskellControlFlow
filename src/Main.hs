@@ -11,6 +11,7 @@ import HaskellControlFlow.Analysis.Inference
 
 import System.Environment
 import Data.List
+import Data.Fresh
 
 -- | Walks over typed tree, and shows possible functions of applications.
 showAnalysis :: AnnEnv -> Term Type -> IO ()
@@ -75,7 +76,8 @@ main = do
     putStrLn $ formatTerm (topExpr program)
     
     -- Analyse it.
-    (programType, tt, annEnv) <- inferPrincipalType (topExpr program) (dataTypes program)
+    (programType, tt, annEnv) <- fmap fst . (\m -> runFreshT m (0::Integer)) $ do
+        inferPrincipalType (topExpr program) (dataTypes program)
     
     -- Show main type.
     putStrLn $ "Type of the 'main' function: " ++ show programType ++ "\n"
