@@ -53,9 +53,10 @@
 \maketitle
 
 \section{Introduction}
-The goal of this project is to implement CFA on a small subset of Haskell.
-We use \texttt{haskell-src}, so we can only deal with Haskell 98 to begin with,
-but that's still a language with more features than we can handle.
+The goal of this project is to implement CFA (control flow analysis) on a small
+subset of Haskell. We use \texttt{haskell-src}, so we can only deal with
+Haskell~98 to begin with, but that's still a language with more features than
+we can handle.
 
 \begin{description}
 \item[No guards]
@@ -83,14 +84,21 @@ but that's still a language with more features than we can handle.
     imports or exports (let alone the FFI).
 \end{description}
 
+In our case, the CFA serves to determine the creation sites of both functions
+and data types. In case of functions, we want to know for each application
+which abstractions may be applied, and in case of data types, we want to know
+where the scrutinee of a \texttt{case} expression is finally constructed
+(i.e. all fields of the constructor have been filled).
+
 \section{The language}
 Every module is assumed to define a function \texttt{main}. Under this
 assumption, we build a \texttt{Term} which expresses the value of this
-function:
+function:\footnote{There may be some differences between this listing and the implementation.}
 
 \begin{code}
 data Term = LiteralTerm     Literal
           | VariableTerm    Name
+          | ConstructorTerm Name
           | HardwiredTerm   HardwiredValue
           | ApplicationTerm Term Term
           | AbstractionTerm Name Term
@@ -117,18 +125,20 @@ fixed point operator (\texttt{FixTerm}), which serves the same purpose as
 \texttt{fix} from \texttt{Data.Function}.
 
 Also note the absence of data type definitions. They are supported in our
-language, but are parsed and treated separately (the constructors are
-inserted immediately into the environment).
+language, but are parsed and treated separately. Data constructors are
+inserted immediately into the environment, the ADT relationship is however
+forgotten.
 
 \subsection{Type rules}
-The type universe of our language is defined by the following data types:
+The type universe of our language is defined by the following data types:%
+\footnote{There may be some differences between this listing and the implementation.}
 
 \begin{code}
-data Type = BasicType BasicType
-          | DataType Name
-          | ListType Type
-          | TupleType [Type]
-          | Arrow (Maybe AnnVar) Type Type
+data Type = BasicType AnnVar BasicType
+          | DataType AnnVar Name
+          | ListType AnnVar Type
+          | TupleType AnnVar [Type]
+          | Arrow AnnVar Bool Type Type
           | TyVar Name
 
 data BasicType = Integer
@@ -138,12 +148,11 @@ data BasicType = Integer
 type AnnVar = Name
 \end{code}
 
-We will ignore the \texttt{Maybe AnnVar} field of the \texttt{Arrow} constructor
-for now.
+Note the lack of a \texttt{Forall} construct: we don't support polymorphism,
+and the \texttt{TyVar}s are only there to aid \algow{}.
 
-Note the lack of a \texttt{Forall} (or System F-style \texttt{TyLambda})
-construct: we don't support polymorphism, and the \texttt{TyVar}s are
-only there to aid \algow{}.
+An explanation for the \texttt{AnnVar} and \texttt{Bool} fields follows in
+section \ref{sec:algow-phase}.
 
 For sake of space, we omit the rules for defining the environment and
 type instantiation.
@@ -180,7 +189,7 @@ and simple recursive rules:
     {}
 \end{equation*}\begin{equation*}
 \infer[ListConsIntro]%
-    {\Gamma \vdash \hsterm{HardwiredTerm HwListCons} : \hsterm{Arrow \_ \ensuremath{a} (Arrow \_ (ListType \ensuremath{a}) (ListType \ensuremath{a}))}}%
+    {\Gamma \vdash \hsterm{HardwiredTerm HwListCons} : \hsterm{Arrow \ensuremath{a} (Arrow (ListType \ensuremath{a}) (ListType \ensuremath{a}))}}%
     {}
 \end{equation*}\begin{equation*}
 \infer[ListNilIntro]%
@@ -191,16 +200,16 @@ and simple recursive rules:
 Abstraction, application, and the fixed point combinator:
 \begin{equation*}
 \infer[FunIntro]%
-    {\Gamma \vdash \hsterm{AbstractionTerm \ensuremath{x} \ensuremath{e}} : \hsterm{Arrow \_ \ensuremath{\tau_x} \ensuremath{\tau_e}}}%
+    {\Gamma \vdash \hsterm{AbstractionTerm \ensuremath{x} \ensuremath{e}} : \hsterm{Arrow \ensuremath{\tau_x} \ensuremath{\tau_e}}}%
     {\Gamma [x : \tau_x] \vdash e : \tau_e}%
 \end{equation*}\begin{equation*}
 \infer[FunElim]%
     {\Gamma \vdash \hsterm{ApplicationTerm \ensuremath{e_0} \ensuremath{e_1}} : \tau_2}%
-    {\Gamma \vdash e_0 : \hsterm{Arrow \_ \ensuremath{\tau_1} \ensuremath{\tau_2}} \qquad \Gamma \vdash e_1 : \tau_1}%
+    {\Gamma \vdash e_0 : \hsterm{Arrow \ensuremath{\tau_1} \ensuremath{\tau_2}} \qquad \Gamma \vdash e_1 : \tau_1}%
 \end{equation*}\begin{equation*}
 \infer[FunFix]%
     {\Gamma \vdash \hsterm{FixTerm \ensuremath{e}} : \ensuremath{a}}%
-    {\Gamma \vdash \ensuremath{e} : \hsterm{Arrow \_ (Arrow \_ \ensuremath{a} \ensuremath{a}) \ensuremath{a}}}
+    {\Gamma \vdash \ensuremath{e} : \hsterm{Arrow (Arrow \ensuremath{a} \ensuremath{a}) \ensuremath{a}}}
 \end{equation*}
 
 Declarations:
@@ -259,27 +268,64 @@ recursive functions in terms of the fixed point combinator.
 
 If there's anything we encounter that we can't support, we throw an error.
 
+\subsection{Name adornment}
+We then traverse the desugared program, and `adorn' every node with a location.
+We chose to keep things simple (and unfortunately, unclear for more complex
+programs, and useless for further automated use): we only record the name that's
+given to the expression, and whether it's `shallow' (the expression is immediately
+bound to the name) or `deep' (the term is part of the expression being bound
+to a name).
+
+These names are used to build the answer to the CFA. As a consequence, the CFA
+will only be able to tell, for function application, which name the applied
+function has, and otherwise the name of some expression where that function
+is defined.
+
 \subsection{Type inference and constraint generation}
+\label{sec:algow-phase}
 We then apply a very straightforward implementation of \algow{} to the
-desugared program.
+desugared program. During \algow{}, we also collect constraints on
+the annotation variables (the \texttt{AnnVar} fields) in the types we inferred.
 
-Remember the \texttt{Maybe AnnVar} field in the \texttt{Arrow} constructor;
-during type inference, we plug fresh variables into these fields, and wherever
-necessary, we record constraints about these variables while executing \algow{}.
-The constraints are of the form $\phi \equiv \phi'$ (called
-\texttt{SubstitutionConstraint} in our implementation) and $n \in \phi$
-(\texttt{InclusionConstraint}).
+Generally speaking, these annotation variables refer to the site of
+construction:
+\begin{itemize}
+\item
+    For \texttt{Arrow} (function types), they can only refer to
+    an \texttt{AbstractionTerm}, or to a data type declaration.
+\item
+    For \texttt{BasicType} (containing only certain hardwired types), they can
+    only refer to a \texttt{LiteralTerm}.
+\item
+    For all other types, they refer to a \texttt{ConstructorTerm}
+    (for nullary data constructors) or an \texttt{ApplicationTerm}
+    (for data constructors with at least one field).
+\end{itemize}
 
-We found that formulating constraints only made sense when declaring new
-functions. As such, we only do this when we encounter a \texttt{LetInTerm}
-node during type inference. When we bind an expression to a name $n$,
-and we know that the expression is a function with annotation $\phi$,
-we can add a constraint $n \in \phi$.
+In order to emit constraints for data constructors with at least one field,
+we need to know whether an \texttt{ApplicationTerm} is applying a constructor
+(partially applied or not) in such a way that a value of the resulting data
+type is constructed. The \texttt{Bool} field of \texttt{Arrow} exists to
+determine whether the function is a constructor or not.
+
+The constraints are generated at the creation sites $s$ mentioned above:
+\begin{itemize}
+\item
+    For \texttt{AbstractionTerm}s, we generate a fresh annotation variable
+\item
+    For \texttt{LiteralTerm}s and nullary constructors, we do something similar.
+\item
+    For \texttt{ApplicationTerm}s, we check whether the applied function is
+    a constructor and whether we've completed all fields; if so, we add
+    a constraint $s \in \phi$ on the resulting data type.
+\end{itemize}
+Constraints in the form $\phi \simeq \phi'$ are also generated, as a result
+of the unification process during \algow{}.
 
 \subsection{Constraint solving}
 After \algow{} is done, we solve the constraints on the annotation variables
-separately. First, we build a union-find structure to express the
-$\phi \equiv \phi'$ constraints. Then, for the $n \in \phi$ constraints,
+separately. First, we build a union-find structure based on the
+$\phi \simeq \phi'$ constraints. Then, for the $n \in \phi$ constraints,
 we build a mapping from the representatives of $\phi$ (as found in
 the union-find structure) to sets of related $n$ from the constraints.
 We end up with a map from representative annotation variables to minimal sets
@@ -291,22 +337,55 @@ Finally, we print the following information:
 \begin{itemize}
 \item The desugared form of the input program.
 \item The inferred type of the \texttt{main} function.
-\item For every function application, the result of the CFA on the function.
-    Specifically, only named functions are listed.
+\item For every function application and every case expression, the result of
+    the analysis.
 \end{itemize}
 
-\section{Discussion}
-When executing our CFA, you may notice that a lot of applications don't involve
-function calls of directly named functions. This significantly reduces the
-usefulness of this CFA; even information like ``an inner function of $f$''
-might be very useful to the consumer of the analysis.
+\section{Examples}
 
-A few aspects of our implementation might be considered warts:
+% TODO Walkthrough.
+
+\section{Discussion and conclusion}
+Our analysis of this subset of Haskell seems to perform reasonably well.
+The output of our program is quite cumbersome to read, but it should be
+doable.
+
+Our implementation has a few warts:
 \begin{itemize}
 \item
-    We might have been able to use a more applicative style of programming
-    if we had separated type constraint generation and solving. However,
-    we already had a straightforward implementation of \algow{} available.
+    Our implementation of \algow{} might have been much cleaner
+    if we had separated type constraint generation and solving,
+    and if we had used an appropriate monadic (or even applicative)
+    functor. However, we already had a fairly straightforward
+    implementation of \algow{} available.
+\item
+    The separation between constructors and variables is quite ugly,
+    since the distinction wasn't there for a long time. In expressions,
+    they were both desugared to the same thing (variables).
+\item
+    We don't always properly generate fresh variables. We do have
+    an interface for fresh names, but at some places, we simply use
+    names that are forbidden in Haskell.
+\item
+    Type-wise, the code is messy. There is very little distinction
+    between names in terms and types, and no distinction between
+    annotations on functions and annotations on data types.
 \end{itemize}
+
+To support polymorphism, we would have to change a few things about our analysis,
+besides the obvious lack of universally quantified types. For one, we don't
+think the \texttt{Bool} field of \texttt{Arrow} (a hack to distinguish
+constructors from functions) will still work in a polymorphic setting.%
+\footnote{We are not even sure if it makes sense in our monomorphic language.}
+We would need an additional constraint between function annotations and
+data annotations; let's call it $[s \in \delta]_\phi$. We eject this constraint
+for sites $s$, where a function $f : \tau_1 \xrightarrow{\phi} \tau_2^\delta$
+is applied to $x : \tau_1$. This constraint means, ``if $\phi$ might be
+a `final constructor'%
+\footnote{A constructor that's partially applied to the point that it's only
+missing its last field.}
+then $s \in \delta$ must hold.'' Extending the solver to support this should be
+trivial, but with more precise semantics than we currently support ($\phi$ must
+be a final constructor for $\delta$), this would become trickier.
 
 \end{document}
