@@ -14,7 +14,7 @@ formatTermHelper :: Term a -> String -> String
 formatTermHelper term indentation = case term of
     LiteralTerm _ c ->
         formatConstant c
-    VariableTerm _ n ->
+    VariableTerm _ _ n ->
         n
     HardwiredTerm _ h ->
         show h

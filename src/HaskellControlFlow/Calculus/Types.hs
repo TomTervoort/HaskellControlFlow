@@ -21,11 +21,13 @@ data Type = BasicType BasicType
           | DataType (Maybe AnnVar) Name
           | ListType (Maybe AnnVar) Type
           | TupleType (Maybe AnnVar) [Type]
-          | Arrow (Maybe AnnVar) Type Type
+          | Arrow (Maybe AnnVar) Bool Type Type
           | TyVar Name
           -- | Forall Name Type (polymorphism)
           deriving Eq
 
+-- TODO Use the code below instead of ../Inference.hs:unify
+{-
 data TypeConstraint
     = EquivType Type Type
     | EquivTypeVar Name Name
@@ -58,7 +60,7 @@ reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
     TupleType psi xs `EquivType` TupleType  psi' ys
         | length xs == length ys -> Expand $ equivAnn psi psi' ++ zipWith EquivType xs ys
         | otherwise -> Reject $ TufMismatch (TupleType psi xs) (TupleType psi' ys)
-    Arrow phi xl xr `EquivType` Arrow phi' yl yr
+    Arrow phi _ xl xr `EquivType` Arrow phi' _ yl yr
         -> Expand $ equivAnn phi phi' ++ [xl `EquivType` yl, xr `EquivType` yr]
     xt `EquivType` yt -> Reject $ TufMismatch xt yt
 
@@ -67,10 +69,11 @@ reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
 
 equivAnn :: Maybe AnnVar -> Maybe AnnVar -> [TypeConstraint]
 equivAnn phi phi' = maybeToList $ EquivAnn <$> phi <*> phi'
+-}
 
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
-    showsPrec _ (DataType _ k) = (k++)
+    showsPrec _ (DataType x k) = (k++) . ("^{"++) . (show x++) . ("}"++)
     showsPrec _ (ListType _ ty)
         = ("["++)
         . showsPrec 0 ty
@@ -79,7 +82,7 @@ instance Show Type where
         = ("("++)
         . (intercalate ", " (map (\t -> showsPrec 0 t "") tys) ++)
         . (")"++)
-    showsPrec n (Arrow _ lhs rhs)
+    showsPrec n (Arrow _ _ lhs rhs)
         = ((if n > 0 then "(" else "")++)
         . showsPrec 10 lhs
         . (" -> "++)
@@ -101,8 +104,8 @@ type TyEnv = M.Map Name Type
 
 -- | Returns a possible type annotation.
 typeAnn :: Type -> Maybe AnnVar
-typeAnn (Arrow ann _ _) = ann
-typeAnn _               = Nothing
+typeAnn (Arrow ann _ _ _) = ann
+typeAnn _                 = Nothing
 
 -- | Gives the type with a certain name. Either returns a basic type if the String equals "Integer",
 --   "Char" or "Double"; or considers the type to be a custom data type.
@@ -128,7 +131,7 @@ initTyEnv = M.fromList stdOps
                  , ("fromIntegral" , BasicType Integer .> BasicType Double )
                  , ("/"            , BasicType Double  .> BasicType Double  .> BasicType Double )
                 ]
-       a .> b = Arrow Nothing a b
+       a .> b = Arrow Nothing False a b
        infixr 3 .>
 
 -- | Definition of a custom Haskell98 algebraic data type. May be (non-mutually) recursive, but 

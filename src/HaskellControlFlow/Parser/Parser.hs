@@ -27,7 +27,7 @@ parseHaskellModule :: HsModule -> HaskellProgram ()
 parseHaskellModule (HsModule _ _ _ _ declarations) =
     let (defs, lets) = partitionEithers $ concatMap parseDeclaration declarations
      in HaskellProgram {dataTypes = foldr addDataDef initEnv defs,
-                        topExpr   = letGroup lets (VariableTerm () "main")}
+                        topExpr   = letGroup lets (VariableTerm () False "main")}
 
 -- | Parses a data or function declaration.
 parseDeclaration :: HsDecl -> [Either DataDef (Name, Term ())]
@@ -58,10 +58,10 @@ parseDeclaration declaration = case declaration of
 parseExpression :: HsExp -> Term ()
 parseExpression expr = case expr of    
     HsVar name ->
-        parseExpVar name
+        parseExpVar False name
         
     HsCon name ->
-        parseExpVar name
+        parseExpVar True name
     
     HsLit literal ->
         parseLiteral literal
@@ -93,7 +93,7 @@ parseExpression expr = case expr of
     HsLeftSection lhs op  -> ApplicationTerm () (parseOperator op) (parseExpression lhs)
     
     HsNegApp subExpr -> 
-        ApplicationTerm () (VariableTerm () "negate") $ parseExpression subExpr
+        ApplicationTerm () (VariableTerm () False "negate") $ parseExpression subExpr
 
     HsCase scrutinee alternatives -> 
      CaseTerm () (parseExpression scrutinee) (map parseCaseAlternative alternatives)
@@ -144,9 +144,9 @@ parseQName qName = case qName of
     Special _ -> error "Special constructors are not supported."
 
 -- | Parses a bare qualified name as used in an expression.
-parseExpVar :: HsQName -> Term ()
-parseExpVar qname_ = case qname_ of
-    UnQual name -> VariableTerm () $ parseName name
+parseExpVar :: Bool -> HsQName -> Term ()
+parseExpVar isConstructor qname_ = case qname_ of
+    UnQual name -> VariableTerm () isConstructor $ parseName name
     Qual _ _ -> error "Qualified names are not supported."
     Special HsUnitCon -> HardwiredTerm () (HwTupleCon 0)
     Special (HsTupleCon n) -> HardwiredTerm () (HwTupleCon n)
@@ -170,7 +170,7 @@ parseFunBindings ms =
   [(n, Just (Variable v), t)] -> (n, AbstractionTerm () v t)
   [(n, Nothing, t)]           -> (n, t)
   xs                          -> (getName xs, AbstractionTerm () fresh 
-                                                $ CaseTerm () (VariableTerm () fresh) (map getAlt xs))
+                                                $ CaseTerm () (VariableTerm () False fresh) (map getAlt xs))
  
  where fresh = "@" -- Not really a fresh variable. But since @ is an illegal Haskell identifier
                    -- it can not shadow user code.
@@ -221,8 +221,8 @@ parseNamePattern pattern = case pattern of
 -- | Parses an operator. 
 parseOperator :: HsQOp -> Term ()
 parseOperator op = case op of
-                    HsQVarOp n -> VariableTerm () $ parseQName n
-                    HsQConOp n -> VariableTerm () $ parseQName n
+                    HsQVarOp n -> VariableTerm () False $ parseQName n
+                    HsQConOp n -> VariableTerm () True $ parseQName n
 
 -- | Parses a single case alternative.
 parseCaseAlternative :: HsAlt -> (Pattern, Term ())
@@ -250,10 +250,9 @@ parseDataCon (HsConDecl _ name args) = DataCon (parseName name) (map parseArg ar
 -- | Parses a type, from within a data declaration.
 parseType :: HsType -> Type
 parseType ty = case ty of
-                HsTyFun   a b -> Arrow Nothing (parseType a) (parseType b)
+                HsTyFun   a b -> Arrow Nothing False (parseType a) (parseType b)
                 HsTyTuple ts  -> TupleType Nothing $ map parseType ts
                 HsTyApp (HsTyCon (Special HsListCon)) t   -> ListType Nothing $ parseType t
                 HsTyCon name -> typeFromName $ parseQName name
                 HsTyApp _ _ -> error "Parameterized types other than lists and tuples are not supported."
                 HsTyVar _   -> error "Unbound type variable."
-

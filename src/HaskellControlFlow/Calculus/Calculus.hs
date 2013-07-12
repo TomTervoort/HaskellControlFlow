@@ -17,7 +17,7 @@ type CallGraph = [(Term (), Name, [Name])]
 
 -- | Terms.
 data Term a = LiteralTerm       a Literal
-            | VariableTerm      a Name
+            | VariableTerm      a Bool Name
             | HardwiredTerm     a HardwiredValue
             | ApplicationTerm   a (Term a) (Term a)
             | AbstractionTerm   a Name (Term a)
@@ -39,7 +39,7 @@ instance Show HardwiredValue where
 annotation :: Term a -> a
 annotation term_ = case term_ of
     LiteralTerm     a _     -> a
-    VariableTerm    a _     -> a
+    VariableTerm    a _ _   -> a
     HardwiredTerm   a _     -> a
     ApplicationTerm a _ _   -> a
     AbstractionTerm a _ _   -> a
@@ -50,7 +50,7 @@ annotation term_ = case term_ of
 shallowMapAnnotation :: (a -> a) -> Term a -> Term a
 shallowMapAnnotation f term_ = case term_ of
     LiteralTerm     ann c       -> LiteralTerm (f ann) c
-    VariableTerm    ann n       -> VariableTerm (f ann) n
+    VariableTerm    ann c n     -> VariableTerm (f ann) c n
     HardwiredTerm   ann h       -> HardwiredTerm (f ann) h
     ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) lhs rhs
     AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd trm
@@ -81,7 +81,7 @@ type Name = String
 instance Functor Term where
     fmap f term_ = case term_ of
         LiteralTerm     ann c       -> LiteralTerm (f ann) c
-        VariableTerm    ann n       -> VariableTerm (f ann) n
+        VariableTerm    ann c n     -> VariableTerm (f ann) c n
         HardwiredTerm   ann h       -> HardwiredTerm (f ann) h
         ApplicationTerm ann lhs rhs -> ApplicationTerm (f ann) (fmap f lhs) (fmap f rhs)
         AbstractionTerm ann bnd trm -> AbstractionTerm (f ann) bnd (fmap f trm)
@@ -92,7 +92,7 @@ instance Functor Term where
 instance Foldable Term where
     foldMap f term_ = case term_ of
         LiteralTerm     ann _       -> f ann
-        VariableTerm    ann _       -> f ann
+        VariableTerm    ann _ _     -> f ann
         HardwiredTerm   ann _       -> f ann
         ApplicationTerm ann lhs rhs -> mconcat [f ann, foldMap f lhs, foldMap f rhs]
         AbstractionTerm ann _   trm -> mconcat [f ann, foldMap f trm]
@@ -103,7 +103,7 @@ instance Foldable Term where
 instance Traversable Term where
     traverse f term_ = case term_ of
         LiteralTerm     ann c       -> LiteralTerm <$> f ann <*> pure c
-        VariableTerm    ann n       -> VariableTerm <$> f ann <*> pure n
+        VariableTerm    ann c n     -> VariableTerm <$> f ann <*> pure c <*> pure n
         HardwiredTerm   ann h       -> HardwiredTerm <$> f ann <*> pure h
         ApplicationTerm ann lhs rhs -> ApplicationTerm <$> f ann <*> traverse f lhs <*> traverse f rhs
         AbstractionTerm ann bnd trm -> AbstractionTerm <$> f ann <*> pure bnd <*> traverse f trm
@@ -111,16 +111,32 @@ instance Traversable Term where
         CaseTerm        ann scr mtc -> CaseTerm <$> f ann <*> traverse f scr <*> traverse (\(p,q) -> (,) p <$> traverse f q) mtc
         FixTerm         ann trm     -> FixTerm <$> f ann <*> traverse f trm
 
-adornWithNames :: Term a -> Term (Maybe Name, a)
-adornWithNames = go Nothing
+data NameAdornment
+    = ShallowName Name
+    | DeepName Name
+    | HereBeDragons
+    deriving (Eq, Ord)
+
+instance Show NameAdornment where
+    show (ShallowName x) = x
+    show (DeepName x) = "{inside " ++ x ++ "}"
+    show HereBeDragons = "{should not occur: HereBeDragons}"
+
+deeperName :: NameAdornment -> NameAdornment
+deeperName (ShallowName n) = DeepName n
+deeperName x = x
+
+adornWithNames :: Term a -> Term (NameAdornment, a)
+adornWithNames = go HereBeDragons
   where
     go name term_ = case term_ of
-        LiteralTerm     ann c       -> LiteralTerm (Nothing, ann) c
-        VariableTerm    ann n       -> VariableTerm (Nothing, ann) n
-        HardwiredTerm   ann h       -> HardwiredTerm (Nothing, ann) h
+        -- TODO where to apply deeperName?
+        LiteralTerm     ann c       -> LiteralTerm (name, ann) c
+        VariableTerm    ann c n     -> VariableTerm (name, ann) c n
+        HardwiredTerm   ann h       -> HardwiredTerm (name, ann) h
         ApplicationTerm ann lhs rhs -> ApplicationTerm (name, ann) (go name lhs) (go name rhs)
-        AbstractionTerm ann bnd trm -> AbstractionTerm (name, ann) bnd (go name trm)
-        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (name, ann) bnd (go (Just $ "{inside " ++ bnd ++ "}") tm1) (go name tm2)
+        AbstractionTerm ann bnd trm -> AbstractionTerm (name, ann) bnd (go (deeperName name) trm)
+        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (name, ann) bnd (go (ShallowName bnd) tm1) (go name tm2)
         CaseTerm        ann scr mtc -> CaseTerm (name, ann) (go name scr) (fmap (second (go name)) mtc)
         FixTerm         ann trm     -> FixTerm (name, ann) (go name trm)
 
@@ -130,8 +146,8 @@ replaceVar from to = rep
  where rep t = 
         case t of
          LiteralTerm ann c                           -> LiteralTerm ann c
-         VariableTerm ann v              | v == from -> to
-                                         | otherwise -> VariableTerm ann v
+         VariableTerm ann c v            | v == from -> to
+                                         | otherwise -> VariableTerm ann c v
          HardwiredTerm ann h                         -> HardwiredTerm ann h
          ApplicationTerm ann l r                     -> ApplicationTerm ann (rep l) (rep r)
          AbstractionTerm ann n b         | n == from -> AbstractionTerm ann n b -- Name is shadowed.
@@ -151,7 +167,7 @@ makeCallGraph = map (\(n, t) -> (t, n, names t))
  where names t = 
         case t of
          LiteralTerm _ _ -> []
-         VariableTerm _ n -> [n]
+         VariableTerm _ _ n -> [n]
          HardwiredTerm _ _ -> []
          ApplicationTerm _ l r -> names l ++ names r
          AbstractionTerm _ n b -> removeAll n $ names b -- Do not include the scoped variable.
@@ -186,7 +202,7 @@ fixRecursion = concatMap handleSCC . stronglyConnCompR
               abstracted []     = t
               abstracted (n:ns) = let freshName = n ++ "@" ++ name
                                      in AbstractionTerm () freshName 
-                                          $ replaceVar n (VariableTerm () freshName)
+                                          $ replaceVar n (VariableTerm () False freshName)
                                           $ abstracted ns
 
               fixName i = "@F" ++ show i ++ "@" ++ name
@@ -195,12 +211,12 @@ fixRecursion = concatMap handleSCC . stronglyConnCompR
               fixed :: Int -> Int -> Term ()
               fixed defCount i = FixTerm () $ AbstractionTerm () (fixName i) 
                                             $ appSequence 
-                                            $ [VariableTerm () $ absName $ group !! i] 
-                                                ++ map (VariableTerm ()) (take defCount group)
+                                            $ [VariableTerm () False $ absName $ group !! i] 
+                                                ++ map (VariableTerm () False) (take defCount group)
                                                 ++ map (fixed defCount) [defCount .. i - 1]
-                                                ++ [VariableTerm () $ fixName i]
+                                                ++ [VariableTerm () False $ fixName i]
                                                 ++ map (repName i . fixed (defCount + 1)) [i + 1 .. groupSize - 1]
-              repName i = replaceVar (group !! i) (VariableTerm () $ fixName i)
+              repName i = replaceVar (group !! i) (VariableTerm () False $ fixName i)
 
               appSequence :: [Term ()] -> Term ()
               appSequence = foldl1 (ApplicationTerm ())

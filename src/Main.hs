@@ -20,7 +20,7 @@ showAnalysis annEnv tt = case tt of
     LiteralTerm _ _ ->
         return ()
         
-    VariableTerm _ _ ->
+    VariableTerm _ _ _ ->
         return ()
 
     HardwiredTerm _ _ ->
@@ -39,14 +39,15 @@ showAnalysis annEnv tt = case tt of
         putStrLn $ "Left hand side type: " ++ (show $ annotation lhsTerm)
         putStrLn $ "Right hand side type: " ++ (show $ annotation rhsTerm)
 
+        putStr "Possible named functions: "
         let annNames
                 = maybe [] (\var -> lookupAnnNames var annEnv)
                 . typeAnn . annotation $ lhsTerm
         if null annNames
-            then putStrLn "Possible named functions: none"
-            else putStrLn $ "Possible named functions: " ++ (intercalate ", " annNames)
+            then putStrLn "(none)"
+            else putStrLn . intercalate ", " . map show $ annNames
         
-        putStr "\n"
+        putStrLn ""
         
     AbstractionTerm _ _ bodyTerm ->
         showAnalysis annEnv bodyTerm
@@ -57,6 +58,27 @@ showAnalysis annEnv tt = case tt of
         
     CaseTerm _ exprTerm alts -> do
         showAnalysis annEnv exprTerm
+
+        let dataAnn = case annotation exprTerm of
+                DataType psi _   -> Just psi
+                ListType psi _   -> Just psi
+                TupleType psi _  -> Just psi
+                _ -> Nothing
+
+        case dataAnn of
+            Nothing -> return ()
+            Just psi -> do
+                putStr $ "Scrutinee: " ++ formatTerm exprTerm
+                putStrLn $ "Scrutinee type: " ++ (show $ annotation exprTerm)
+                case psi of
+                    Just var -> do
+                        putStr "Possible creation sites: "                        
+                        let ns = lookupAnnNames var annEnv
+                        putStrLn $ if null ns then "(none)" else intercalate "," (map show ns)
+                    Nothing ->
+                        putStrLn "(Failed to find creation site.)"
+                putStrLn ""
+
         mapM_ (\(_, term) -> showAnalysis annEnv term) alts
 
 -- | Main method.

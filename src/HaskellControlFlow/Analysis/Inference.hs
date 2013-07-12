@@ -14,6 +14,7 @@ import Control.Monad
 
 import Data.Fresh
 import Data.Functor
+import Data.Maybe (fromMaybe)
 
 -- | A type substitution. For any `s :: TySubst`, it should hold that `s . s` is equivalent to `s`.
 type TySubst = Type -> Type
@@ -31,7 +32,7 @@ freeVars ty =
  case ty of
   ListType _ t  -> freeVars t
   TupleType _ ts-> S.unions $ map freeVars ts
-  Arrow _ t1 t2 -> freeVars t1 `S.union` freeVars t2
+  Arrow _ _ t1 t2 -> freeVars t1 `S.union` freeVars t2
   TyVar v       -> S.singleton v
   _             -> S.empty
 
@@ -58,7 +59,7 @@ subTyVar from to = sub
                             | otherwise -> TyVar v
                  {-- Forall a t | from == a -> Forall a t
                             | otherwise -> Forall a $ sub t--}
-                 Arrow an t1 t2 -> Arrow an (sub t1) (sub t2)
+                 Arrow an ic t1 t2 -> Arrow an ic (sub t1) (sub t2)
                  ListType an t  -> ListType an $ sub t
                  TupleType an ts-> TupleType an $ map sub ts
                  other          -> other
@@ -72,7 +73,7 @@ unify a_ b_ constraints = case (a_, b_) of
     (BasicType x, BasicType y) | x == y -> return (id, constraints)
     (DataType xn x, DataType yn y)   | x == y -> return (id, unifyAnnVars xn yn constraints)
     (ListType xn t1, ListType yn t2)          -> unify t1 t2 (unifyAnnVars xn yn constraints)
-    (Arrow a1 t11 t12, Arrow a2 t21 t22) -> do
+    (Arrow a1 _ t11 t12, Arrow a2 _ t21 t22) -> do
         (s1, constraints1) <- unify t11 t21 constraints
         (s2, constraints2) <- unify (s1 t12) (s1 t22) constraints1
         
@@ -102,43 +103,87 @@ constantType c = case c of
     CharLit     _ -> BasicType Char
     StringLit   _ -> ListType Nothing (BasicType Char)
 
+refreshDataAnnotations :: (Functor m, Monad m, Fresh m Integer) => Type -> m Type
+refreshDataAnnotations = go
+  where
+    go (DataType ann nm) = do
+        ann' <- freshVar
+        return $ DataType (Just $ fromMaybe ann' ann) nm
+    go (ListType ann ty) = do
+        ann' <- freshVar
+        ty' <- go ty
+        return $ ListType (Just $ fromMaybe ann' ann) ty'
+    go (TupleType ann tys) = do
+        ann' <- freshVar
+        tys' <- mapM go tys
+        return $ TupleType (Just $ fromMaybe ann' ann) tys'
+    go (Arrow ann ic lhs rhs) = do
+        ann' <- freshVar
+        lhs' <- go lhs
+        rhs' <- go rhs
+        return $ Arrow (Just $ fromMaybe ann' ann) ic lhs' rhs'
+    go (TyVar nm) = return $ TyVar nm
+
+plugConstructorAnnotation :: AnnVar -> Type -> Type
+plugConstructorAnnotation var ty_ = case ty_ of
+    BasicType _ -> ty_
+    DataType _ nm -> DataType (Just var) nm
+    ListType _ ty -> ListType (Just var) ty
+    TupleType _ ty -> TupleType (Just var) ty
+    Arrow ann ic lhs rhs -> Arrow ann ic lhs (plugConstructorAnnotation var rhs)
+    TyVar nm -> TyVar nm
+
 -- | Implements algorithm W for type inference.
-algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term (Maybe Name, Type) ->
+algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term (NameAdornment, Type) ->
     m (Term Type, TySubst, AnnConstraints)
 algorithmW defs env constraints term = case term of
     LiteralTerm _ c ->
          return (constantType c <$ term, id, constraints)
 
-    VariableTerm (enName, _) name | Nothing <- M.lookup name env ->
+    VariableTerm (enName, _) _ name | Nothing <- M.lookup name env ->
         fail $ "Not in scope: '" ++ name ++ "'."
-            ++ maybe "" (\n -> "\n(If it's of any help: we're inside the definition of '" ++ n ++ "'.)") enName
 
-    VariableTerm (enName, _) name | Just ty <- M.lookup name env -> do
-        -- TODO Re-introduce the distinction between variables and constructors,
-        --      in order to be able to annotate the newly generate data type
-        --      with the creation point information. 
-        return (ty <$ term, id, constraints)
+    VariableTerm (enName, _) True name | Just ty <- M.lookup name env -> do
+        dataAnn <- freshVar
+        let dataAnnC = [InclusionConstraint dataAnn enName]
+
+        ty' <- refreshDataAnnotations ty
+        let ty'' = plugConstructorAnnotation dataAnn ty'
+
+        -- In case of nullary constructors.
+        let constraints' = case ty'' of
+                Arrow _ _ _ _ -> constraints
+                _ -> dataAnnC ++ constraints
+
+        return (ty'' <$ term, id, constraints')
+
+    VariableTerm (enName, _) False name | Just ty <- M.lookup name env -> do
+        ty' <- refreshDataAnnotations ty
+        return (ty' <$ term, id, constraints)
 
     HardwiredTerm (enName, _enType) (HwTupleCon n) -> do
         argTypes <- map TyVar <$> replicateM n freshVar
         ann1 <- freshVar
         ann2 <- freshVar
-        let annText1 = "(" ++ replicate n ',' ++ ")"
-        let annText2 = "{inside " ++ annText1 ++ "}"
+        let annText1 = ShallowName $ "(" ++ replicate n ',' ++ ")"
+        let annText2 = DeepName $ "(" ++ replicate n ',' ++ ")"
 
         dataAnn <- freshVar
-        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+        let dataAnnC = [InclusionConstraint dataAnn enName]
 
         let resultType = TupleType (Just dataAnn) argTypes
-        let termType = foldr (Arrow (Just ann2)) resultType argTypes
+        let termType = foldr (Arrow (Just ann2) True) resultType argTypes
 
         let (termType', constraints') = case termType of
-                Arrow _ fstTy moreTy ->
-                    ( Arrow (Just ann1) fstTy moreTy
+                Arrow _ ic fstTy moreTy ->
+                    ( Arrow (Just ann1) ic fstTy moreTy
                     , InclusionConstraint ann1 annText1
                     : InclusionConstraint ann2 annText2
                     : constraints)
-                _ -> (termType, constraints)
+                TupleType _ _ ->
+                    ( termType
+                    , dataAnnC ++ constraints)
+                _ -> error "This should never occur (HaskellControlFlow.Analysis.Inference:algorithmW; HwTupleCon)."
 
         return (termType' <$ term, id, dataAnnC ++ constraints')
 
@@ -146,25 +191,28 @@ algorithmW defs env constraints term = case term of
         ty <- TyVar <$> freshVar
         ann1 <- freshVar
         ann2 <- freshVar
-        let annText1 = "(:)"
-        let annText2 = "{inside " ++ annText1 ++ "}"
+        ann3 <- freshVar
+        let annText1 = ShallowName "(:)"
+        let annText2 = DeepName "(:)"
 
         dataAnn <- freshVar
-        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
 
         let constraints' =
                 ( InclusionConstraint ann1 annText1
                 : InclusionConstraint ann2 annText2
                 : constraints)
 
-        let termType = Arrow (Just ann1) ty (Arrow (Just ann2) (ListType Nothing ty) (ListType (Just dataAnn) ty))
-        return (termType <$ term, id, dataAnnC ++ constraints')
+        let termType = Arrow (Just ann1) True ty
+                     ( Arrow (Just ann2) True
+                       (ListType (Just ann3) ty)
+                       (ListType (Just dataAnn) ty))
+        return (termType <$ term, id, constraints')
 
     HardwiredTerm (enName, _enType) HwListNil -> do
         ty <- TyVar <$> freshVar
 
         dataAnn <- freshVar
-        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+        let dataAnnC = [InclusionConstraint dataAnn enName]
         
         let termType = ListType (Just dataAnn) ty
         return (termType <$ term, id, dataAnnC ++ constraints)
@@ -176,7 +224,13 @@ algorithmW defs env constraints term = case term of
         
         (tt1, s, constraints1) <- algorithmW defs env1 constraints t1
         
-        let termType  = Arrow enName (s a1) (annotation tt1)
+        -- TODO Hack, because I don't want to change phi just yet.
+        let enName' = case enName of
+                ShallowName x -> Just x
+                DeepName x -> Just $ "{inside " ++ x ++ "}"
+                HereBeDragons -> Nothing
+        
+        let termType  = Arrow enName' False (s a1) (annotation tt1)
         let typedTerm = AbstractionTerm termType name tt1
         
         return (typedTerm, s, constraints1)
@@ -188,16 +242,18 @@ algorithmW defs env constraints term = case term of
         (tt1, s1, constraints1) <- algorithmW defs env constraints t1
         (tt2, s2, constraints2) <- algorithmW defs (M.map s1 env) constraints1 t2
         
-        (s3, constraints3) <- unify (s2 $ annotation tt1) (Arrow (Just a2) (annotation tt2) a1) constraints2
-        
+        (s3, constraints3) <- unify (s2 $ annotation tt1) (Arrow (Just a2) False (annotation tt2) a1) constraints2
+
         let termType  = s3 a1
 
-        (termType', dataConstraints) <- case termType of
+        (termType', dataConstraints) <- case annotation tt1 of
             -- TODO Hack: this is indicative of data structure creation.
-            DataType Nothing n -> do
+            Arrow _ True _ _ -> do
                 dataAnn <- freshVar
-                let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
-                return (DataType (Just dataAnn) n, dataAnnC)
+                let dataAnnC = [InclusionConstraint dataAnn enName]
+                let termType' = plugConstructorAnnotation dataAnn termType
+                
+                return (termType', dataAnnC)
             _ -> return (termType, [])
 
         let typedTerm = ApplicationTerm termType' tt1 tt2
@@ -211,8 +267,8 @@ algorithmW defs env constraints term = case term of
         
         let newType =
                 case annotation tt1 of
-                        Arrow _ from to -> Arrow (Just a1) from to
-                        x               -> x
+                        Arrow _ ic from to -> Arrow (Just a1) ic from to
+                        x                  -> x
         
         let env1 = M.map s1 $ M.insert name (gen (M.map s1 env) newType) env
         
@@ -220,8 +276,8 @@ algorithmW defs env constraints term = case term of
         
         let constraints3 =
                 case annotation tt1 of
-                    Arrow (Just a2) _ _ -> (InclusionConstraint a1 name) : (SubstituteConstraint a1 a2) : constraints2
-                    Arrow Nothing _ _   -> (InclusionConstraint a1 name) : constraints2
+                    Arrow (Just a2) _ _ _ -> (InclusionConstraint a1 $ ShallowName name) : (SubstituteConstraint a1 a2) : constraints2
+                    Arrow Nothing _ _ _   -> (InclusionConstraint a1 $ ShallowName name) : constraints2
                     _                   -> constraints2
         
         let termType  = annotation tt2
@@ -247,7 +303,7 @@ algorithmW defs env constraints term = case term of
         -- resulting type will be a.
         ty <- TyVar <$> freshVar
         
-        (s1, c2) <- unify (annotation fty) (Arrow (Just a1) ty ty) c1
+        (s1, c2) <- unify (annotation fty) (Arrow (Just a1) False ty ty) c1
         
         let termType  = s1 ty
         let typedTerm = FixTerm termType fty
@@ -255,7 +311,7 @@ algorithmW defs env constraints term = case term of
         return (typedTerm, s1 . s, c2)
 
 handlePatterns :: (Monad m, Functor m, Fresh m Integer)
-    => DataEnv -> M.Map Name Type -> (Type, Type -> Type, AnnConstraints) -> [(Pattern, Term (Maybe Name, Type))]
+    => DataEnv -> M.Map Name Type -> (Type, Type -> Type, AnnConstraints) -> [(Pattern, Term (NameAdornment, Type))]
     -> m (Type, Type -> Type, AnnConstraints, [(Pattern, Term Type)])
 handlePatterns _ _ _ [] = fail "Empty case statement."
 handlePatterns defs env (ty1, s1, constraints) ((p@(Variable name), pTerm):_ ) = do
@@ -268,7 +324,11 @@ handlePatterns defs env (ty1, s1, constraints) ((p@(Variable name), pTerm):_ ) =
 handlePatterns defs env (ty1, s1, constraints) ((p@(Pattern name args), pTerm):ps) =
      case lookUpConTypes name defs of
          Nothing         -> fail $ "Unknown constructor: " ++ name
-         Just (cty, ats) -> do
+         Just (cty_, ats_) -> do
+             -- Refresh after lookup.
+             cty <- refreshDataAnnotations cty_
+             ats <- mapM refreshDataAnnotations ats_
+
              -- Unify expression type.
              (s2, constraints1) <- unify ty1 cty constraints
              
@@ -309,20 +369,20 @@ constructorTypes dataEnv env_ constraints_ = do
             addDataCons (env, constraints, dName) (DataCon cName args) = do
                 a1 <- freshVar
                 
-                let constraints1 = (InclusionConstraint a1 cName) : constraints
+                let constraints1 = (InclusionConstraint a1 (ShallowName cName)) : constraints
                 
                 let ty   = constructType (Just a1) dName args
                 let env1 = M.insert cName ty env
                 
                 return (env1, constraints1, dName)
                 
-            constructType var dName (m:ms) = Arrow var m (constructType Nothing dName ms)
+            constructType var dName (m:ms) = Arrow var True m (constructType Nothing dName ms)
             constructType _   dName []     = DataType Nothing dName
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: (Fresh m Integer, Functor m, Monad m) => Term (Maybe Name, Type) -> DataEnv -> m (Type, Term Type, AnnEnv)
+inferPrincipalType :: (Fresh m Integer, Functor m, Monad m) => Term (NameAdornment, Type) -> DataEnv -> m (Type, Term Type, AnnEnv)
 inferPrincipalType term denv = do
     let constraints = []
     -- TODO initialize (Fresh m Integer, Fresh m AnnVar) here

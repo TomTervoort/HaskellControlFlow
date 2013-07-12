@@ -1,6 +1,6 @@
 module HaskellControlFlow.Analysis.CfaSolver where
 
-import HaskellControlFlow.Calculus.Calculus (Name)
+import HaskellControlFlow.Calculus.Calculus (NameAdornment)
 import HaskellControlFlow.Calculus.Types
 
 import Control.Arrow
@@ -10,17 +10,16 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 -- | Annotation constraint.
-data AnnConstraint = InclusionConstraint AnnVar Name
+data AnnConstraint = InclusionConstraint AnnVar NameAdornment
                    | SubstituteConstraint AnnVar AnnVar
-                     deriving (Show)
 
 -- | Annotation environment.
-data AnnEnv = AnnEnv (P.Partition AnnVar) (M.Map AnnVar (S.Set Name))
+data AnnEnv = AnnEnv (P.Partition AnnVar) (M.Map AnnVar (S.Set NameAdornment))
 
 -- | Annotation constraints.
 type AnnConstraints = [AnnConstraint]
 
-partAnnConstraints :: [AnnConstraint] -> ([(AnnVar, Name)], [(AnnVar, AnnVar)])
+partAnnConstraints :: [AnnConstraint] -> ([(AnnVar, NameAdornment)], [(AnnVar, AnnVar)])
 partAnnConstraints = foldr go ([], [])
   where
     go (InclusionConstraint var name) (ics, scs) = ((var, name):ics, scs)
@@ -36,14 +35,14 @@ solveAnnConstraints
     . second buildPartition
     . partAnnConstraints
     where
-        makeEnv :: P.Partition AnnVar -> [(AnnVar, Name)] -> AnnEnv
+        makeEnv :: P.Partition AnnVar -> [(AnnVar, NameAdornment)] -> AnnEnv
         makeEnv p
             = AnnEnv p
             . M.fromListWith S.union
             . map (P.rep p *** S.singleton)
 
 -- | Looks up annotation names in the solved annotations.
-lookupAnnNames :: AnnVar -> AnnEnv -> [Name]
+lookupAnnNames :: AnnVar -> AnnEnv -> [NameAdornment]
 lookupAnnNames var (AnnEnv substitutions allNames)
     = maybe [] S.toList
     . M.lookup (P.rep substitutions var)
