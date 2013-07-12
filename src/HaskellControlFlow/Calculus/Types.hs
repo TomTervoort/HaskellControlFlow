@@ -26,51 +26,6 @@ data Type = BasicType BasicType
           -- | Forall Name Type (polymorphism)
           deriving Eq
 
--- TODO Use the code below instead of ../Inference.hs:unify
-{-
-data TypeConstraint
-    = EquivType Type Type
-    | EquivTypeVar Name Name
-    | EquivAnn AnnVar AnnVar
-    | AnnElement Name AnnVar
-    deriving Eq
-
-data TypeUnificationFailure
-    = TufMismatch Type Type
-
-reduceTypeConstraints :: [TypeConstraint] -> Either TypeUnificationFailure [TypeConstraint]
-reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
-    -- Equal types are already equivalent.
-    xx `EquivType` yy | xx == yy -> done
-    
-    -- Variables are treated in a special way.
-    TyVar n `EquivType` TyVar n' -> Expand [EquivTypeVar n n']
-    TyVar _ `EquivType` _ -> Accept
-    x `EquivType` TyVar n -> Expand [EquivType (TyVar n) x]
-
-    -- Other type equivalences.    
-    BasicType x `EquivType` BasicType y
-        | x == y -> done
-        | otherwise -> Reject $ TufMismatch (BasicType x) (BasicType y)
-    DataType psi x `EquivType` DataType psi' y
-        | x == y -> Expand $ equivAnn psi psi'
-        | otherwise -> Reject $ TufMismatch (DataType psi x) (DataType psi' y)
-    ListType psi x `EquivType` ListType psi' y
-        -> Expand $ equivAnn psi psi' ++ [x `EquivType` y]
-    TupleType psi xs `EquivType` TupleType  psi' ys
-        | length xs == length ys -> Expand $ equivAnn psi psi' ++ zipWith EquivType xs ys
-        | otherwise -> Reject $ TufMismatch (TupleType psi xs) (TupleType psi' ys)
-    Arrow phi _ xl xr `EquivType` Arrow phi' _ yl yr
-        -> Expand $ equivAnn phi phi' ++ [xl `EquivType` yl, xr `EquivType` yr]
-    xt `EquivType` yt -> Reject $ TufMismatch xt yt
-
-    -- All other constraints are not trivally reductible.
-    _ -> Accept
-
-equivAnn :: Maybe AnnVar -> Maybe AnnVar -> [TypeConstraint]
-equivAnn phi phi' = maybeToList $ EquivAnn <$> phi <*> phi'
--}
-
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
     showsPrec _ (DataType x k) = (k++) . ("^{"++) . (show x++) . ("}"++)
