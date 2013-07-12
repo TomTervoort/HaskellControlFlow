@@ -251,8 +251,8 @@ parseDataCon (HsConDecl _ name args) = DataCon (parseName name) (map parseArg ar
 parseType :: HsType -> Type
 parseType ty = case ty of
                 HsTyFun   a b -> Arrow Nothing (parseType a) (parseType b)
-                HsTyTuple ts  -> TupleType $ map parseType ts
-                HsTyApp (HsTyCon (Special HsListCon)) t   -> ListType $ parseType t
+                HsTyTuple ts  -> TupleType Nothing $ map parseType ts
+                HsTyApp (HsTyCon (Special HsListCon)) t   -> ListType Nothing $ parseType t
                 HsTyCon name -> typeFromName $ parseQName name
                 HsTyApp _ _ -> error "Parameterized types other than lists and tuples are not supported."
                 HsTyVar _   -> error "Unbound type variable."

@@ -8,6 +8,7 @@ import Control.Applicative
 import Control.Worklist
 import qualified Data.Map as M
 import Data.List
+import Data.Maybe
 
 -- | Represents a program within our supported subset of Haskell. Consists of a top-level 
 --   expression (all functions are nested let expressions) and a collection of defined data types.
@@ -17,9 +18,9 @@ data HaskellProgram a = HaskellProgram {dataTypes :: DataEnv, topExpr :: Term a}
 --   Since lists and tuples are parametrized and can therefore not be generally defined in the 
 --   subset of Haskell we support, they are considered as special cases.
 data Type = BasicType BasicType
-          | DataType Name
-          | ListType Type
-          | TupleType [Type]
+          | DataType (Maybe AnnVar) Name
+          | ListType (Maybe AnnVar) Type
+          | TupleType (Maybe AnnVar) [Type]
           | Arrow (Maybe AnnVar) Type Type
           | TyVar Name
           -- | Forall Name Type (polymorphism)
@@ -49,29 +50,32 @@ reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
     BasicType x `EquivType` BasicType y
         | x == y -> done
         | otherwise -> Reject $ TufMismatch (BasicType x) (BasicType y)
-    DataType x `EquivType` DataType y
-        | x == y -> done
-        | otherwise -> Reject $ TufMismatch (DataType x) (DataType y)
-    ListType x `EquivType` ListType y -> Expand [x `EquivType` y]
-    TupleType xs `EquivType` TupleType ys
-        | length xs == length ys -> Expand $ zipWith EquivType xs ys
-        | otherwise -> Reject $ TufMismatch (TupleType xs) (TupleType ys)
+    DataType psi x `EquivType` DataType psi' y
+        | x == y -> Expand $ equivAnn psi psi'
+        | otherwise -> Reject $ TufMismatch (DataType psi x) (DataType psi' y)
+    ListType psi x `EquivType` ListType psi' y
+        -> Expand $ equivAnn psi psi' ++ [x `EquivType` y]
+    TupleType psi xs `EquivType` TupleType  psi' ys
+        | length xs == length ys -> Expand $ equivAnn psi psi' ++ zipWith EquivType xs ys
+        | otherwise -> Reject $ TufMismatch (TupleType psi xs) (TupleType psi' ys)
     Arrow phi xl xr `EquivType` Arrow phi' yl yr
-        -> let equivAnn = maybe id (:) (EquivAnn <$> phi <*> phi')
-           in Expand . equivAnn $ [xl `EquivType` yl, xr `EquivType` yr]
+        -> Expand $ equivAnn phi phi' ++ [xl `EquivType` yl, xr `EquivType` yr]
     xt `EquivType` yt -> Reject $ TufMismatch xt yt
 
     -- All other constraints are not trivally reductible.
     _ -> Accept
 
+equivAnn :: Maybe AnnVar -> Maybe AnnVar -> [TypeConstraint]
+equivAnn phi phi' = maybeToList $ EquivAnn <$> phi <*> phi'
+
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
-    showsPrec _ (DataType k) = (k++)
-    showsPrec _ (ListType ty)
+    showsPrec _ (DataType _ k) = (k++)
+    showsPrec _ (ListType _ ty)
         = ("["++)
         . showsPrec 0 ty
         . ("]"++)
-    showsPrec _ (TupleType tys)
+    showsPrec _ (TupleType _ tys)
         = ("("++)
         . (intercalate ", " (map (\t -> showsPrec 0 t "") tys) ++)
         . (")"++)
@@ -107,7 +111,7 @@ typeFromName "Int"     = BasicType Integer
 typeFromName "Integer" = BasicType Integer
 typeFromName "Char"    = BasicType Char
 typeFromName "Double"  = BasicType Double
-typeFromName datatype  = DataType datatype
+typeFromName datatype  = DataType Nothing datatype
 
 -- | An environment of types of some standard functions with which basic types can be manipulated.
 initTyEnv :: TyEnv
@@ -157,7 +161,7 @@ lookUpConTypes :: Name -> DataEnv -> Maybe (Type, [Type])
 lookUpConTypes n env = do dname <- M.lookup n $ conNameMap env
                           def   <- M.lookup dname $ ddefs env
                           con   <- find (\c -> conName c == n) $ ctors def
-                          return (DataType dname, members con)
+                          return (DataType Nothing dname, members con)
 
 -- | Add a data definition to the environment.
 addDataDef :: DataDef -> DataEnv -> DataEnv

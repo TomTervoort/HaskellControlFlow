@@ -29,8 +29,8 @@ freshVar = fmap (\n -> '$' : show (n :: Integer)) fresh
 freeVars :: Type -> Set TyVar
 freeVars ty = 
  case ty of
-  ListType t    -> freeVars t
-  TupleType ts  -> S.unions $ map freeVars ts
+  ListType _ t  -> freeVars t
+  TupleType _ ts-> S.unions $ map freeVars ts
   Arrow _ t1 t2 -> freeVars t1 `S.union` freeVars t2
   TyVar v       -> S.singleton v
   _             -> S.empty
@@ -59,8 +59,8 @@ subTyVar from to = sub
                  {-- Forall a t | from == a -> Forall a t
                             | otherwise -> Forall a $ sub t--}
                  Arrow an t1 t2 -> Arrow an (sub t1) (sub t2)
-                 ListType t     -> ListType $ sub t
-                 TupleType ts   -> TupleType $ map sub ts
+                 ListType an t  -> ListType an $ sub t
+                 TupleType an ts-> TupleType an $ map sub ts
                  other          -> other
 
 -- | Robinson's unification algorithm. Uses Monad 'fail' in case of a type error.
@@ -70,8 +70,8 @@ unify a_ b_ constraints = case (a_, b_) of
     (TyVar a1, t2)     | not $ a1 `S.member` freeVars t2 -> return (subTyVar a1 t2, constraints)
     (t1, TyVar a2)     | not $ a2 `S.member` freeVars t1 -> return (subTyVar a2 t1, constraints)
     (BasicType x, BasicType y) | x == y -> return (id, constraints)
-    (DataType x, DataType y)   | x == y -> return (id, constraints)
-    (ListType t1, ListType t2)          -> unify t1 t2 constraints
+    (DataType xn x, DataType yn y)   | x == y -> return (id, unifyAnnVars xn yn constraints)
+    (ListType xn t1, ListType yn t2)          -> unify t1 t2 (unifyAnnVars xn yn constraints)
     (Arrow a1 t11 t12, Arrow a2 t21 t22) -> do
         (s1, constraints1) <- unify t11 t21 constraints
         (s2, constraints2) <- unify (s1 t12) (s1 t22) constraints1
@@ -80,8 +80,8 @@ unify a_ b_ constraints = case (a_, b_) of
         
         return (s2 . s1, constraints3)
     
-    (TupleType ts1, TupleType ts2) | length ts1 == length ts2 -> do
-        foldM f (id, constraints) $ zip ts1 ts2
+    (TupleType xn ts1, TupleType yn ts2) | length ts1 == length ts2 -> do
+        foldM f (id, unifyAnnVars xn yn constraints) $ zip ts1 ts2
               where
                   f (s1, cs) (a, b) = do
                       (s2, cs') <- unify a b cs
@@ -100,7 +100,7 @@ constantType c = case c of
     IntegerLit  _ -> BasicType Integer
     RationalLit _ -> BasicType Double
     CharLit     _ -> BasicType Char
-    StringLit   _ -> ListType (BasicType Char)
+    StringLit   _ -> ListType Nothing (BasicType Char)
 
 -- | Implements algorithm W for type inference.
 algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term (Maybe Name, Type) ->
@@ -109,19 +109,27 @@ algorithmW defs env constraints term = case term of
     LiteralTerm _ c ->
          return (constantType c <$ term, id, constraints)
 
-    VariableTerm _ name -> 
-        case M.lookup name env of
-            Nothing -> fail $ "Not in scope: '" ++ name ++ "'."
-            Just ty -> return (ty <$ term, id, constraints)
+    VariableTerm (enName, _) name | Nothing <- M.lookup name env ->
+        fail $ "Not in scope: '" ++ name ++ "'."
+            ++ maybe "" (\n -> "\n(If it's of any help: we're inside the definition of '" ++ n ++ "'.)") enName
 
-    HardwiredTerm _ (HwTupleCon n) -> do
+    VariableTerm (enName, _) name | Just ty <- M.lookup name env -> do
+        -- TODO Re-introduce the distinction between variables and constructors,
+        --      in order to be able to annotate the newly generate data type
+        --      with the creation point information. 
+        return (ty <$ term, id, constraints)
+
+    HardwiredTerm (enName, _enType) (HwTupleCon n) -> do
         argTypes <- map TyVar <$> replicateM n freshVar
         ann1 <- freshVar
         ann2 <- freshVar
         let annText1 = "(" ++ replicate n ',' ++ ")"
         let annText2 = "{inside " ++ annText1 ++ "}"
 
-        let resultType = TupleType argTypes
+        dataAnn <- freshVar
+        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+
+        let resultType = TupleType (Just dataAnn) argTypes
         let termType = foldr (Arrow (Just ann2)) resultType argTypes
 
         let (termType', constraints') = case termType of
@@ -132,27 +140,34 @@ algorithmW defs env constraints term = case term of
                     : constraints)
                 _ -> (termType, constraints)
 
-        return (termType' <$ term, id, constraints')
+        return (termType' <$ term, id, dataAnnC ++ constraints')
 
-    HardwiredTerm _ HwListCons -> do
+    HardwiredTerm (enName, _enType) HwListCons -> do
         ty <- TyVar <$> freshVar
         ann1 <- freshVar
         ann2 <- freshVar
         let annText1 = "(:)"
         let annText2 = "{inside " ++ annText1 ++ "}"
 
+        dataAnn <- freshVar
+        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+
         let constraints' =
                 ( InclusionConstraint ann1 annText1
                 : InclusionConstraint ann2 annText2
                 : constraints)
 
-        let termType = Arrow (Just ann1) ty (Arrow (Just ann2) (ListType ty) (ListType ty))
-        return (termType <$ term, id, constraints')
+        let termType = Arrow (Just ann1) ty (Arrow (Just ann2) (ListType Nothing ty) (ListType (Just dataAnn) ty))
+        return (termType <$ term, id, dataAnnC ++ constraints')
 
-    HardwiredTerm _ HwListNil -> do
+    HardwiredTerm (enName, _enType) HwListNil -> do
         ty <- TyVar <$> freshVar
-        let termType = ListType ty
-        return (termType <$ term, id, constraints)
+
+        dataAnn <- freshVar
+        let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+        
+        let termType = ListType (Just dataAnn) ty
+        return (termType <$ term, id, dataAnnC ++ constraints)
 
     AbstractionTerm (enName, _enType) name t1 -> do
         a1 <- TyVar <$> freshVar
@@ -166,7 +181,7 @@ algorithmW defs env constraints term = case term of
         
         return (typedTerm, s, constraints1)
 
-    ApplicationTerm _ t1 t2 -> do
+    ApplicationTerm (enName, _enType) t1 t2 -> do
         a1 <- TyVar <$> freshVar
         a2 <- freshVar
         
@@ -176,9 +191,18 @@ algorithmW defs env constraints term = case term of
         (s3, constraints3) <- unify (s2 $ annotation tt1) (Arrow (Just a2) (annotation tt2) a1) constraints2
         
         let termType  = s3 a1
-        let typedTerm = ApplicationTerm termType tt1 tt2
-        
-        return (typedTerm, s3 . s2 . s1, constraints3)
+
+        (termType', dataConstraints) <- case termType of
+            -- TODO Hack: this is indicative of data structure creation.
+            DataType Nothing n -> do
+                dataAnn <- freshVar
+                let dataAnnC = maybe [] (\n -> [InclusionConstraint dataAnn $ "{inside " ++ n ++ "}"]) enName
+                return (DataType (Just dataAnn) n, dataAnnC)
+            _ -> return (termType, [])
+
+        let typedTerm = ApplicationTerm termType' tt1 tt2
+
+        return (typedTerm, s3 . s2 . s1, dataConstraints ++ constraints3)
 
     LetInTerm _ name t1 t2 -> do
         a1 <- freshVar
@@ -293,7 +317,7 @@ constructorTypes dataEnv env_ constraints_ = do
                 return (env1, constraints1, dName)
                 
             constructType var dName (m:ms) = Arrow var m (constructType Nothing dName ms)
-            constructType _   dName []     = DataType dName
+            constructType _   dName []     = DataType Nothing dName
 
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
