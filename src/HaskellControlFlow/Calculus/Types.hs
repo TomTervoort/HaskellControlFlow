@@ -28,7 +28,7 @@ data Type = BasicType BasicType
 
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
-    showsPrec _ (DataType x k) = (k++) . ("^{"++) . (show x++) . ("}"++)
+    showsPrec _ (DataType x k) = (k++)
     showsPrec _ (ListType _ ty)
         = ("["++)
         . showsPrec 0 ty
