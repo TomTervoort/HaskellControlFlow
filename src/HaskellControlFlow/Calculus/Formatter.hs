@@ -24,6 +24,9 @@ formatTermHelper term indentation = case term of
         let (argNames_, innerTerm) = fetchAbstractions bodyTerm
             argNames = argName : argNames_
         in '\\' : intercalate " " argNames ++ " -> " ++ formatTermHelper innerTerm indentation
+    LetInTerm _ binder letTerm inTerm@(LetInTerm _ _ _ _) ->
+        "\n" ++ indentation ++ "let" ++ formatNamedTerm binder letTerm ('\t' : indentation) ++
+        "\n" ++ indentation ++ "in" ++ formatTermHelper inTerm indentation
     LetInTerm _ binder letTerm inTerm ->
         "\n" ++ indentation ++ "let" ++ formatNamedTerm binder letTerm ('\t' : indentation) ++
         "\n" ++ indentation ++ "in\n\t" ++ indentation ++ formatTermHelper inTerm ('\t' : indentation)

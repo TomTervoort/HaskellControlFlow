@@ -103,7 +103,7 @@ constantType c = case c of
     StringLit   _ -> ListType (BasicType Char)
 
 -- | Implements algorithm W for type inference.
-algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term a ->
+algorithmW :: (Fresh m Integer, Functor m, Monad m) => DataEnv -> TyEnv -> AnnConstraints -> Term (Maybe Name, Type) ->
     m (Term Type, TySubst, AnnConstraints)
 algorithmW defs env constraints term = case term of
     LiteralTerm _ c ->
@@ -122,11 +122,11 @@ algorithmW defs env constraints term = case term of
         let annText2 = "{inside " ++ annText1 ++ "}"
 
         let resultType = TupleType argTypes
-        let termType = foldr (Arrow Nothing) resultType argTypes
-        
+        let termType = foldr (Arrow (Just ann2)) resultType argTypes
+
         let (termType', constraints') = case termType of
                 Arrow _ fstTy moreTy ->
-                    (Arrow (Just ann1) fstTy (replaceAnnVarInSpine (const (Just ann2)) moreTy)
+                    ( Arrow (Just ann1) fstTy moreTy
                     , InclusionConstraint ann1 annText1
                     : InclusionConstraint ann2 annText2
                     : constraints)
@@ -154,14 +154,14 @@ algorithmW defs env constraints term = case term of
         let termType = ListType ty
         return (termType <$ term, id, constraints)
 
-    AbstractionTerm _ name t1 -> do
+    AbstractionTerm (enName, _enType) name t1 -> do
         a1 <- TyVar <$> freshVar
 
         let env1 = M.insert name a1 env
         
         (tt1, s, constraints1) <- algorithmW defs env1 constraints t1
         
-        let termType  = Arrow Nothing (s a1) (annotation tt1)
+        let termType  = Arrow enName (s a1) (annotation tt1)
         let typedTerm = AbstractionTerm termType name tt1
         
         return (typedTerm, s, constraints1)
@@ -216,13 +216,14 @@ algorithmW defs env constraints term = case term of
         return (typedTerm, s2, constaints2)
 
     FixTerm _ t -> do
+        a1 <- freshVar
         (fty, s, c1) <- algorithmW defs env constraints t
         
         -- The fixed term should be of type a -> a for some a. After applying the fix operator, the 
         -- resulting type will be a.
         ty <- TyVar <$> freshVar
         
-        (s1, c2) <- unify (annotation fty) (Arrow Nothing ty ty) c1
+        (s1, c2) <- unify (annotation fty) (Arrow (Just a1) ty ty) c1
         
         let termType  = s1 ty
         let typedTerm = FixTerm termType fty
@@ -230,7 +231,7 @@ algorithmW defs env constraints term = case term of
         return (typedTerm, s1 . s, c2)
 
 handlePatterns :: (Monad m, Functor m, Fresh m Integer)
-    => DataEnv -> M.Map Name Type -> (Type, Type -> Type, AnnConstraints) -> [(Pattern, Term a)]
+    => DataEnv -> M.Map Name Type -> (Type, Type -> Type, AnnConstraints) -> [(Pattern, Term (Maybe Name, Type))]
     -> m (Type, Type -> Type, AnnConstraints, [(Pattern, Term Type)])
 handlePatterns _ _ _ [] = fail "Empty case statement."
 handlePatterns defs env (ty1, s1, constraints) ((p@(Variable name), pTerm):_ ) = do
@@ -297,7 +298,7 @@ constructorTypes dataEnv env_ constraints_ = do
 -- | Uses algorithmW to find a principal type: the most polymorphic type that can be assigned to a 
 --   given term. An environment should be provided and will be updated. Monadic 'fail' is used in 
 --   case of a type error. 
-inferPrincipalType :: (Fresh m Integer, Functor m, Monad m) => Term a -> DataEnv -> m (Type, Term Type, AnnEnv)
+inferPrincipalType :: (Fresh m Integer, Functor m, Monad m) => Term (Maybe Name, Type) -> DataEnv -> m (Type, Term Type, AnnEnv)
 inferPrincipalType term denv = do
     let constraints = []
     -- TODO initialize (Fresh m Integer, Fresh m AnnVar) here

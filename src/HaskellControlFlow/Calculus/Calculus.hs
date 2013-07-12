@@ -111,6 +111,19 @@ instance Traversable Term where
         CaseTerm        ann scr mtc -> CaseTerm <$> f ann <*> traverse f scr <*> traverse (\(p,q) -> (,) p <$> traverse f q) mtc
         FixTerm         ann trm     -> FixTerm <$> f ann <*> traverse f trm
 
+adornWithNames :: Term a -> Term (Maybe Name, a)
+adornWithNames = go Nothing
+  where
+    go name term_ = case term_ of
+        LiteralTerm     ann c       -> LiteralTerm (Nothing, ann) c
+        VariableTerm    ann n       -> VariableTerm (Nothing, ann) n
+        HardwiredTerm   ann h       -> HardwiredTerm (Nothing, ann) h
+        ApplicationTerm ann lhs rhs -> ApplicationTerm (name, ann) (go name lhs) (go name rhs)
+        AbstractionTerm ann bnd trm -> AbstractionTerm (name, ann) bnd (go name trm)
+        LetInTerm   ann bnd tm1 tm2 -> LetInTerm (name, ann) bnd (go (Just $ "{inside " ++ bnd ++ "}") tm1) (go name tm2)
+        CaseTerm        ann scr mtc -> CaseTerm (name, ann) (go name scr) (fmap (second (go name)) mtc)
+        FixTerm         ann trm     -> FixTerm (name, ann) (go name trm)
+
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
 replaceVar :: Name -> Term a -> Term a -> Term a
 replaceVar from to = rep

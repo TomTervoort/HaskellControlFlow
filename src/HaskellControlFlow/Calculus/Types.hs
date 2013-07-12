@@ -64,11 +64,6 @@ reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
     -- All other constraints are not trivally reductible.
     _ -> Accept
 
-replaceAnnVarInSpine :: (Maybe AnnVar -> Maybe AnnVar) -> Type -> Type
-replaceAnnVarInSpine f ty = case ty of
-    Arrow ann t1 t2 -> Arrow (f ann) t1 (replaceAnnVarInSpine f t2)
-    _ -> ty
-
 instance Show Type where
     showsPrec n (BasicType k) = showsPrec n k
     showsPrec _ (DataType k) = (k++)
