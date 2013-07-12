@@ -2,10 +2,14 @@
 
 module HaskellControlFlow.Calculus.Calculus where
 
+import Control.Applicative
 import Control.Arrow
+import Data.Foldable (Foldable (foldMap))
 import Data.Graph
 import Data.List hiding (group)
 import Data.Maybe
+import Data.Monoid
+import Data.Traversable (Traversable (traverse))
 
 -- | Graph of mutual calls within a group of let's. The outgoing edge list may contain names that 
 --   are not present in the graph. These should be ignored.
@@ -84,6 +88,28 @@ instance Functor Term where
         LetInTerm   ann bnd tm1 tm2 -> LetInTerm (f ann) bnd (fmap f tm1) (fmap f tm2)
         CaseTerm        ann scr mtc -> CaseTerm (f ann) (fmap f scr) (fmap (second (fmap f)) mtc)
         FixTerm         ann trm     -> FixTerm (f ann) (fmap f trm)
+
+instance Foldable Term where
+    foldMap f term_ = case term_ of
+        LiteralTerm     ann _       -> f ann
+        VariableTerm    ann _       -> f ann
+        HardwiredTerm   ann _       -> f ann
+        ApplicationTerm ann lhs rhs -> mconcat [f ann, foldMap f lhs, foldMap f rhs]
+        AbstractionTerm ann _   trm -> mconcat [f ann, foldMap f trm]
+        LetInTerm   ann _   tm1 tm2 -> mconcat [f ann, foldMap f tm1, foldMap f tm2]
+        CaseTerm        ann scr mtc -> mconcat $ f ann : foldMap f scr : map (foldMap f. snd) mtc
+        FixTerm         ann trm     -> mconcat [f ann, foldMap f trm]
+
+instance Traversable Term where
+    traverse f term_ = case term_ of
+        LiteralTerm     ann c       -> LiteralTerm <$> f ann <*> pure c
+        VariableTerm    ann n       -> VariableTerm <$> f ann <*> pure n
+        HardwiredTerm   ann h       -> HardwiredTerm <$> f ann <*> pure h
+        ApplicationTerm ann lhs rhs -> ApplicationTerm <$> f ann <*> traverse f lhs <*> traverse f rhs
+        AbstractionTerm ann bnd trm -> AbstractionTerm <$> f ann <*> pure bnd <*> traverse f trm
+        LetInTerm   ann bnd tm1 tm2 -> LetInTerm <$> f ann <*> pure bnd <*> traverse f tm1 <*> traverse f tm2
+        CaseTerm        ann scr mtc -> CaseTerm <$> f ann <*> traverse f scr <*> traverse (\(p,q) -> (,) p <$> traverse f q) mtc
+        FixTerm         ann trm     -> FixTerm <$> f ann <*> traverse f trm
 
 -- | `replaceVar a b t` replaces each occurence of a variable named `a` within `t` with `b`.
 replaceVar :: Name -> Term a -> Term a -> Term a

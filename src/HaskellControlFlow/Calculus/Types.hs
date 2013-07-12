@@ -4,6 +4,8 @@ module HaskellControlFlow.Calculus.Types where
 
 import HaskellControlFlow.Calculus.Calculus
 
+import Control.Applicative
+import Control.Worklist
 import qualified Data.Map as M
 import Data.List
 
@@ -21,6 +23,46 @@ data Type = BasicType BasicType
           | Arrow (Maybe AnnVar) Type Type
           | TyVar Name
           -- | Forall Name Type (polymorphism)
+          deriving Eq
+
+data TypeConstraint
+    = EquivType Type Type
+    | EquivTypeVar Name Name
+    | EquivAnn AnnVar AnnVar
+    | AnnElement Name AnnVar
+    deriving Eq
+
+data TypeUnificationFailure
+    = TufMismatch Type Type
+
+reduceTypeConstraints :: [TypeConstraint] -> Either TypeUnificationFailure [TypeConstraint]
+reduceTypeConstraints = runWorklist $ \constraint_ -> case constraint_ of
+    -- Equal types are already equivalent.
+    xx `EquivType` yy | xx == yy -> done
+    
+    -- Variables are treated in a special way.
+    TyVar n `EquivType` TyVar n' -> Expand [EquivTypeVar n n']
+    TyVar _ `EquivType` _ -> Accept
+    x `EquivType` TyVar n -> Expand [EquivType (TyVar n) x]
+
+    -- Other type equivalences.    
+    BasicType x `EquivType` BasicType y
+        | x == y -> done
+        | otherwise -> Reject $ TufMismatch (BasicType x) (BasicType y)
+    DataType x `EquivType` DataType y
+        | x == y -> done
+        | otherwise -> Reject $ TufMismatch (DataType x) (DataType y)
+    ListType x `EquivType` ListType y -> Expand [x `EquivType` y]
+    TupleType xs `EquivType` TupleType ys
+        | length xs == length ys -> Expand $ zipWith EquivType xs ys
+        | otherwise -> Reject $ TufMismatch (TupleType xs) (TupleType ys)
+    Arrow phi xl xr `EquivType` Arrow phi' yl yr
+        -> let equivAnn = maybe id (:) (EquivAnn <$> phi <*> phi')
+           in Expand . equivAnn $ [xl `EquivType` yl, xr `EquivType` yr]
+    xt `EquivType` yt -> Reject $ TufMismatch xt yt
+
+    -- All other constraints are not trivally reductible.
+    _ -> Accept
 
 replaceAnnVarInSpine :: (Maybe AnnVar -> Maybe AnnVar) -> Type -> Type
 replaceAnnVarInSpine f ty = case ty of
